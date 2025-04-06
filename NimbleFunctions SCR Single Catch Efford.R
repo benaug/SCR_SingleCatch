@@ -82,8 +82,8 @@ integrand <- nimbleFunction(
     return(prod.term)
   })
 
-#probability exponential RV right truncated at 1 with parameter lambda1 is less than one or more other exponential
-#RVs right truncated at 1 with parameter(s) lambda2
+#probability exponential RV right-truncated at 1 with parameter lambda1 is less than one or more other exponential
+#RVs right-truncated at 1 with parameter(s) lambda2
 pSmaller <- nimbleFunction(
   run = function(lambda1 = double(0), lambda2 = double(1), log = integer(0)) {
     returnType(double(0))
