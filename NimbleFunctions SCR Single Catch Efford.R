@@ -357,14 +357,15 @@ ySampler <- nimbleFunction(
 zSampler <- nimbleFunction(
   contains = sampler_BASE,
   setup = function(model, mvSaved, target, control) {
-    calcNodes <- model$getDependencies(c("N","y.true")) #nodes to copy back to mvSaved
     z.ups <- control$z.ups
     M <- control$M
-    #nodes used for update, calcNodes + z nodes
+    #nodes used for update
     y.nodes <- model$expandNodeNames("y.true")
     N.node <- model$expandNodeNames("N")
     z.nodes <- model$expandNodeNames("z")
     pd.nodes <- model$expandNodeNames(paste("pd"))
+    lambda.nodes <- model$expandNodeNames(paste("lambda"))
+    calcNodes <- c(N.node,z.nodes,pd.nodes,lambda.nodes,y.nodes)
   },
   run = function(){
     for(up in 1:z.ups){ #how many updates per iteration?
@@ -450,6 +451,7 @@ zSampler <- nimbleFunction(
         }
       }
     }
+    model$calculate(lambda.nodes) #not used in this update, but needs to be updated after we are done
     #copy back to mySaved to update logProbs which was not done above
     copy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
     # copy(from = model, to = mvSaved, row = 1, nodes = z.nodes, logProb = TRUE)
