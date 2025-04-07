@@ -64,7 +64,7 @@ image(x.vals,y.vals,matrix(D.cov*InSS,n.cells.x,n.cells.y),main="Habitat",col=co
 points(X,pch=4)
 
 #Density covariates
-D.beta0 <- -0.5
+D.beta0 <- -0.7
 D.beta1 <- 0.5
 #what is implied expected N in state space?
 lambda.cell <- exp(D.beta0 + D.beta1*D.cov)*cellArea
@@ -73,7 +73,7 @@ sum(lambda.cell) #expected N in state space
 image(x.vals,y.vals,matrix(lambda.cell*InSS,n.cells.x,n.cells.y),main="Expected Density",col=cols1)
 points(X,pch=4)
 
-set.seed(399403) #setting new seed here since we set the same seed for D.cov above. Change to get new data set
+set.seed(399405) #setting new seed here since we set the same seed for D.cov above. Change to get new data set
 data <- sim.SCR.singleCatch.Dcov(D.beta0=D.beta0,D.beta1=D.beta1,D.cov=D.cov,InSS=InSS,
                                  xlim=xlim,ylim=ylim,res=res,p0=p0,sigma=sigma,X=X)
 
@@ -159,7 +159,7 @@ conf$addSampler(target = c("D0","D.beta1"),
                 type = 'AF_slice',control = list(adaptive=TRUE),silent = TRUE)
 
 #add sampler for y.true
-y.ups <- 1 #no idea what is optimal. 1 might be fine choice.
+y.ups <- 2 #no idea what is optimal. 1 might be fine choice.
 conf$addSampler(target = paste0("y.true[1:",M,",1:",J,",1:",K,"]"),
                 type = 'ySampler',control = list(M=M,J=J,K=K,K2D=data$K2D,y.obs=data$y.obs,n.cap=data$n.cap,
                                                  obs.i=data$obs.i,obs.j=data$obs.j,obs.k=data$obs.k,
