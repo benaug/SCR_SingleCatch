@@ -191,7 +191,7 @@ Rmcmc <- buildMCMC(conf)
 Cmodel <- compileNimble(Rmodel)
 Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
-#if p0 and (expecially) sigma too small, starting logProb will return NaN. Don't run, nimble will crash.
+#if p0 and (especially) sigma too small, starting logProb will return NaN. Don't run, nimble will crash.
 #raise sigma and maybe p0 init.
 Cmodel$calculate() 
 
