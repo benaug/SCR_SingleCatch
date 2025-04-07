@@ -73,6 +73,7 @@ sum(lambda.cell) #expected N in state space
 image(x.vals,y.vals,matrix(lambda.cell*InSS,n.cells.x,n.cells.y),main="Expected Density",col=cols1)
 points(X,pch=4)
 
+set.seed(399403) #setting new seed here since we set the same seed for D.cov above. Change to get new data set
 data <- sim.SCR.singleCatch.Dcov(D.beta0=D.beta0,D.beta1=D.beta1,D.cov=D.cov,InSS=InSS,
                                  xlim=xlim,ylim=ylim,res=res,p0=p0,sigma=sigma,X=X)
 
