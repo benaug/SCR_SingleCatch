@@ -39,9 +39,3 @@ may be efficiency gains yet to be made. If not, perhaps this is a "smaller N" ap
 4/7/25: Added a version with a spatial density covariate. Realized N is random in the data generator, so data realizations with
 larger realized Ns take longer to run.
 
-4/8/25: I added a version with Mb. It is slower than M0 with a single p0, largely because dThin() needs to be computed for all occasions
-when updating a single y.true index. Second, the observation model parameter estimates are extremely imprecise when you do not know
-the capture order with certainty. Finally, I have not tested this, yet. I reused code from the Random-Thin-MVhyper repository
-#that considers multivariate hypergeometric subsampling that occurs when you keep X samples per trap-occasion.
-#I have tested the Mb part of the code there. I will get around to testing this code.
-
