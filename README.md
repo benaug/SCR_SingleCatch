@@ -39,3 +39,9 @@ may be efficiency gains yet to be made. If not, perhaps this is a "smaller N" ap
 4/7/25: Added a version with a spatial density covariate. Realized N is random in the data generator, so data realizations with
 larger realized Ns take longer to run.
 
+4/8/25: Added a version with a behavioral response to capture. The assumption is that an individual has to be actually
+captured, not "latently captured" to undergo a trap response. Therefore, the capture states (first/subsequent) are observed from
+the observed capture history. Observation model parameters are estimated quite imprecisely, particularly first capture p0 and
+sigma when the trap response is positive. What happens in this situation is that previously captured individuals
+at a trap almost always get there before previously uncaptured individuals an so more first captures are "blocked" that subsequent
+captures. I haven't tested this version, yet.
