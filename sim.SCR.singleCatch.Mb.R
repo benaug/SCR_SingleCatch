@@ -60,11 +60,9 @@ sim.SCR.singleCatch.Mb <- function(N=NA,p0.p=NA,p0.c=NA,sigma=NA,X=NA,buff=NA){
       #update y.state
       for(i in 1:N){
         for(j in 1:J){
-          for(k in 1:K){
-            if((y[i,j,k]>0)&(k<K)){ #if captured, update y.state and capture times to subsequent
-              y.state[i,j,(k+1):K] <- 1
-              times.use[i,j,(k+1):K] <- times.c[i,j,(k+1):K]
-            }
+          if((y[i,j,k]>0)){ #if captured, update y.state and capture times to subsequent
+            y.state[i,j,(k+1):K] <- 1
+            times.use[i,j,(k+1):K] <- times.c[i,j,(k+1):K]
           }
         }
       }
