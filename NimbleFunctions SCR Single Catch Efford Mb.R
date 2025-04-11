@@ -138,20 +138,19 @@ dThin <- nimbleFunction(
       }
     } 
     y.is.one <- y.true==1 #which elements of y.true are 1?
-    lambda.is.valid <- lambda.tmp<Inf #matrix of TRUE
     logProb <- 0
-    # for(o in 1:length(order)){ 
     for(o in 1:(length(order)-1)){ #we do not need the final logProb which is always 0
       idx <- which(order==o)[1]
       focal.lambda <- lambda.tmp[obs.i[idx],obs.j[idx]]
-      n.other.lambdas <- sum(y.is.one&lambda.is.valid)-1
+      n.other.lambdas <- sum(y.is.one&lambda.tmp<Inf)-1
+      #excluding lambdas of 0. leads to nonfinite logProb, these inds will never be captured so they cannot get there first
       if(n.other.lambdas>0){
         other.lambdas <- rep(0,n.other.lambdas) #lambda < Inf is not using traps removed below on next loop iteration
         idx2 <- 1
         for(i in 1:M){
           for(j in 1:J){
             if(y.is.one[i,j]){
-              if(lambda.is.valid[i,j]){
+              if(lambda.tmp[i,j]<Inf){ #if a latent capture
                 if(!(i==obs.i[idx]&j==obs.j[idx])){ #don't include focal
                   other.lambdas[idx2] <- lambda.tmp[i,j]
                   idx2 <- idx2 + 1
@@ -163,8 +162,8 @@ dThin <- nimbleFunction(
         logProb <- logProb + pSmaller(focal.lambda,other.lambdas,log=TRUE)
       } #else add logProb of 0. But we are just skipping the last index in the o loop
       #zero out this individual and trap
-      lambda.is.valid[obs.i[idx],] <- FALSE
-      lambda.is.valid[,obs.j[idx]] <- FALSE
+      lambda.tmp[obs.i[idx],] <- Inf
+      lambda.tmp[,obs.j[idx]] <- Inf
     }
     if(log){
       return(logProb)

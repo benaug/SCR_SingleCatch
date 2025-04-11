@@ -120,27 +120,29 @@ pSmaller <- nimbleFunction(
   })
 
 dThin <- nimbleFunction(
-  run = function(x = double(2), y.true = double(2), lambda = double(2), obs.i = double(1),
-                 obs.j = double(1), order = double(1), n.cap = double(0), log = integer(0)) {
+    run = function(x = double(2), y.true = double(2), lambda = double(2), obs.i = double(1),
+                   obs.j = double(1), order = double(1), n.cap = double(0), log = integer(0)) {
     returnType(double(0))
     M <- nimDim(y.true)[1]
     J <- nimDim(y.true)[2]
+    lambda.tmp <- lambda
     y.is.one <- y.true==1 #which elements of y.true are 1?
-    lambda.is.valid <- lambda<Inf #matrix of TRUE
     logProb <- 0
+    # for(o in 1:length(order)){ 
     for(o in 1:(length(order)-1)){ #we do not need the final logProb which is always 0
       idx <- which(order==o)[1]
-      focal.lambda <- lambda[obs.i[idx],obs.j[idx]]
-      n.other.lambdas <- sum(y.is.one&lambda.is.valid)-1
+      focal.lambda <- lambda.tmp[obs.i[idx],obs.j[idx]]
+      n.other.lambdas <- sum(y.is.one&lambda.tmp<Inf)-1
+      #excluding lambdas of 0. leads to nonfinite logProb, these inds will never be captured so they cannot get there first
       if(n.other.lambdas>0){
         other.lambdas <- rep(0,n.other.lambdas) #lambda < Inf is not using traps removed below on next loop iteration
         idx2 <- 1
         for(i in 1:M){
           for(j in 1:J){
             if(y.is.one[i,j]){
-              if(lambda.is.valid[i,j]){
+              if(lambda.tmp[i,j]<Inf){ #if a latent capture
                 if(!(i==obs.i[idx]&j==obs.j[idx])){ #don't include focal
-                  other.lambdas[idx2] <- lambda[i,j]
+                  other.lambdas[idx2] <- lambda.tmp[i,j]
                   idx2 <- idx2 + 1
                 }
               }
@@ -150,8 +152,8 @@ dThin <- nimbleFunction(
         logProb <- logProb + pSmaller(focal.lambda,other.lambdas,log=TRUE)
       } #else add logProb of 0. But we are just skipping the last index in the o loop
       #zero out this individual and trap
-      lambda.is.valid[obs.i[idx],] <- FALSE
-      lambda.is.valid[,obs.j[idx]] <- FALSE
+      lambda.tmp[obs.i[idx],] <- Inf
+      lambda.tmp[,obs.j[idx]] <- Inf
     }
     if(log){
       return(logProb)
@@ -186,8 +188,7 @@ ySampler <- nimbleFunction(
     K2D <- control$K2D
     y.obs <- control$y.obs
     n.cap <- control$n.cap
-    calcNodes <- c(model$getDependencies("y.true"),
-                   model$expandNodeNames("order2D"))
+    calcNodes <- model$getDependencies(c("y.true","y.obs","order2D"))
   },
   run = function(){
     y.true <- model$y.true
@@ -233,7 +234,7 @@ ySampler <- nimbleFunction(
             y.true.cand[select.cand,obs.j[c],obs.k[c]] <- 0
           }
           #update observation model likelihood
-          ll.y.cand[select.cand,obs.j[c],obs.k[c]] <- 
+          ll.y.cand[select.cand,obs.j[c],obs.k[c]] <-
             dbinom(y.true.cand[select.cand,obs.j[c],obs.k[c]],1,pd[select.cand,obs.j[c]],log=TRUE)
           #update thinning likelihood
           ll.y.obs.cand[obs.k[c]] <- dThin(x=y.obs[1:n.cap,1:J,obs.k[c]],y.true=y.true.cand[1:M,1:J,obs.k[c]],
@@ -251,11 +252,11 @@ ySampler <- nimbleFunction(
             select.probs.back <- pd[,obs.j[c]]*(1-y.true.cand[,obs.j[c],obs.k[c]])*z
             select.probs.back <- select.probs.back/sum(select.probs.back)
           }
-          
+
           logProb.curr <- ll.y.obs[obs.k[c]] +  ll.y[select.cand,obs.j[c],obs.k[c]]
           logProb.cand <- ll.y.obs.cand[obs.k[c]] +  ll.y.cand[select.cand,obs.j[c],obs.k[c]]
           log_MH_ratio <-  (logProb.cand + log(select.probs.back[select.cand])) - (logProb.curr + log(select.probs.for[select.cand]))
-          
+
           accept <- decide(log_MH_ratio)
           if(accept){
             y.true[select.cand,obs.j[c],obs.k[c]] <- y.true.cand[select.cand,obs.j[c],obs.k[c]]
@@ -315,7 +316,7 @@ ySampler <- nimbleFunction(
               select.probs.back <- pd[this.i,]*(1-y.true.cand[this.i,,k])
               select.probs.back <- select.probs.back/sum(select.probs.back)
             }
-            
+
             logProb.curr <- ll.y.obs[k] + ll.y[this.i,select.cand,k]
             logProb.cand <- ll.y.obs.cand[k] + ll.y.cand[this.i,select.cand,k]
             log_MH_ratio <-  (logProb.cand + log(select.probs.back[select.cand])) - (logProb.curr + log(select.probs.for[select.cand]))
@@ -350,7 +351,7 @@ ySampler <- nimbleFunction(
                                     n.cap=n.cap,log=TRUE)
           log_MH_ratio <-  ll.y.obs.cand[k] - ll.y.obs[k]
           accept <- decide(log_MH_ratio)
-          
+
           if(accept){
             order2D[swap1,k] <- order2D.cand[swap1,k]
             order2D[swap2,k] <- order2D.cand[swap2,k]
