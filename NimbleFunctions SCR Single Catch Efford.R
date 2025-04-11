@@ -21,7 +21,7 @@ GetSum <- nimbleFunction(
 
 GetPd <- nimbleFunction(
   run = function(s = double(1), p0 = double(0), sigma = double(0), 
-                 X = double(2), J = double(0),z = double(0)){ 
+                 X = double(2), J = double(0), z = double(0)){ 
     returnType(double(1))
     if(z==0){
       return(rep(0,J))
@@ -70,14 +70,11 @@ integrand <- nimbleFunction(
     lambda2 <- param[2:n1]
     n <- length(lambda2)
     n.x <- length(x)
-    prod.term <- rep(1,n.x)
+    prod.term <- exp(-lambda1 * x)
     for(j in 1:n.x){
       for(i in 1:n){
         prod.term[j] <- prod.term[j] * (exp(-lambda2[i] * x[j]) - exp(-lambda2[i]))
       }
-    }
-    for(j in 1:n.x){
-      prod.term[j] <- prod.term[j] * exp(-lambda1 * x[j])
     }
     return(prod.term)
   })
@@ -108,32 +105,33 @@ dThin <- nimbleFunction(
     returnType(double(0))
     M <- nimDim(y.true)[1]
     J <- nimDim(y.true)[2]
-    lambda.tmp <- lambda #so we don't write over lambda in c++
+    y.is.one <- y.true==1 #which elements of y.true are 1?
+    lambda.is.valid <- lambda<Inf #matrix of TRUE
     logProb <- 0
-    # for(o in 1:length(order)){ 
     for(o in 1:(length(order)-1)){ #we do not need the final logProb which is always 0
       idx <- which(order==o)[1]
-      focal.lambda <- lambda.tmp[obs.i[idx],obs.j[idx]]
-      n.other.lambdas <- sum(y.true==1&lambda.tmp<Inf)-1
-      #excluding lambdas of 0. leads to nonfinite logProb, these inds will never be captured so they cannot get there first
+      focal.lambda <- lambda[obs.i[idx],obs.j[idx]]
+      n.other.lambdas <- sum(y.is.one&lambda.is.valid)-1
       if(n.other.lambdas>0){
         other.lambdas <- rep(0,n.other.lambdas) #lambda < Inf is not using traps removed below on next loop iteration
         idx2 <- 1
         for(i in 1:M){
           for(j in 1:J){
-            if(y.true[i,j]==1&lambda.tmp[i,j]<Inf){ #if a latent capture
-              if(!(i==obs.i[idx]&j==obs.j[idx])){ #don't include focal
-                other.lambdas[idx2] <- lambda.tmp[i,j]
-                idx2 <- idx2 + 1
+              if(y.is.one[i,j]){
+                if(lambda.is.valid[i,j]){
+                  if(!(i==obs.i[idx]&j==obs.j[idx])){ #don't include focal
+                    other.lambdas[idx2] <- lambda[i,j]
+                    idx2 <- idx2 + 1
+                  }
+                }
               }
             }
           }
-        }
         logProb <- logProb + pSmaller(focal.lambda,other.lambdas,log=TRUE)
       } #else add logProb of 0. But we are just skipping the last index in the o loop
       #zero out this individual and trap
-      lambda.tmp[obs.i[idx],] <- Inf
-      lambda.tmp[,obs.j[idx]] <- Inf
+      lambda.is.valid[obs.i[idx],] <- FALSE
+      lambda.is.valid[,obs.j[idx]] <- FALSE
     }
     if(log){
       return(logProb)
