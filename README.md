@@ -51,7 +51,6 @@ Efford, Murray G., David L. Borchers, and Andrea E. Byrom.
 "Density estimation by spatially explicit capture–recapture: likelihood-based methods."
 Modeling demographic processes in marked populations (2009): 255-269.
 
-Added Mb + Dcov for single catch traps. Now, there is M0, Mb, M0 + Dcov, Mb + Dcov for single and multi catch traps. I have not tested the
-multicatch versions. Will remove this disclaimer when tested.
+Added Mb + Dcov for single catch traps. Now, there is M0, Mb, M0 + Dcov, Mb + Dcov for single and multi catch traps.
 
 
