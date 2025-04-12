@@ -26,8 +26,8 @@ GetKern <- nimbleFunction(
     if(z==0) return(rep(0,J))
     if(z==1){
       d2 <- ((s[1]-X[1:J,1])^2 + (s[2]-X[1:J,2])^2)
-      ans <- exp(-d2/(2*sigma^2))
-      return(ans)
+      kern <- exp(-d2/(2*sigma^2))
+      return(kern)
     }
   }
 )
@@ -37,8 +37,8 @@ GetPd <- nimbleFunction(
     returnType(double(1))
     if(z==0) return(rep(0,J))
     if(z==1){
-      ans <- p0*kern
-      return(ans)
+      pd <- p0*kern
+      return(pd)
     }
   }
 )

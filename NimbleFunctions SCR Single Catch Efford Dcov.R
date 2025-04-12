@@ -44,7 +44,7 @@ GetPd <- nimbleFunction(
                  X = double(2), J = double(0),z = double(0)){ 
     returnType(double(1))
     if(z==0){
-      return(rep(0,J))
+      pd <- rep(0,J)
     }else{
       d2 <- ((s[1]-X[1:J,1])^2 + (s[2]-X[1:J,2])^2)
       pd <- p0*exp(-d2/(2*sigma^2))

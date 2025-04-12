@@ -4,7 +4,6 @@
 #Therefore, the capture states (first/subsequent) are observed from
 #the observed capture history.
 #Observation model parameters are estimated quite imprecisely.
-#I haven't tested this version, yet.
 
 library(nimble)
 library(coda)

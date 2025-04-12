@@ -144,7 +144,7 @@ Nimdata <- list(y.obs=data$y.obs,X=data$X,dummy.data=dummy.data,cells=cells,InSS
 parameters <- c('D0','D.beta1','p0','sigma','lambda.N','N','y.true.sum')
 parameters2 <- c("lambda.cell",'D0') #record D0 here for plotting
 nt <- 1 #thinning rate for parameters
-nt2 <- 5 #thinning rate for paremeters2
+nt2 <- 5 #thinning rate for parameters2
 
 
 start.time <- Sys.time()
@@ -154,7 +154,7 @@ conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,
                       monitors2=parameters2, thin2=nt2,
                       useConjugacy = FALSE,nodes=config.nodes)
 
-#add blocked sampler for denstity parameters. AF_slice mixes better than RW_block, often more ESS/time
+#add blocked sampler for density parameters. AF_slice mixes better than RW_block, often more ESS/time
 conf$addSampler(target = c("D0","D.beta1"),
                 type = 'AF_slice',control = list(adaptive=TRUE),silent = TRUE)
 
