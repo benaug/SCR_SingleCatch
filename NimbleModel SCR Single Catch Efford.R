@@ -1,7 +1,7 @@
 NimModel <- nimbleCode({
   p0 ~ dunif(0,1)
   sigma ~ dunif(0,100)
-  lambda.N ~ dunif(0,100)
+  lambda.N ~ dunif(0,1000)
   N ~ dpois(lambda.N) #realized N in state space
   for(i in 1:M){#N/z and y.true update under the hood
     s[i,1] ~ dunif(xlim[1],xlim[2])

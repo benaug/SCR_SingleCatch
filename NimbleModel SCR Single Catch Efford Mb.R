@@ -2,7 +2,7 @@ NimModel <- nimbleCode({
   p0.p ~ dunif(0,1) #first capture p0
   p0.c ~ dunif(0,1) #subsequent capture p0
   sigma ~ dunif(0,100)
-  lambda.N ~ dunif(0,100) #expected N
+  lambda.N ~ dunif(0,1000) #expected N
   N ~ dpois(lambda.N) #realized N
   for(i in 1:M){ #N/z and y.true update under the hood
     s[i,1] ~ dunif(xlim[1],xlim[2])
