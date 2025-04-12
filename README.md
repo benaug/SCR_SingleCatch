@@ -1,5 +1,5 @@
 # SCR_SingleCatch
-Spatial capture recapture for single-catch traps using a latent ID approach
+Spatial capture recapture for single-catch traps using a latent ID approach. Also includes multi-catch traps observation model.
 
 This is a latent ID SCR approach to the single catch trap model of Efford 2004 Oikos. Efford uses inverse prediction for estimation, 
 whereas this approach is Bayesian.
@@ -43,3 +43,15 @@ larger realized Ns take longer to run.
 captured, not "latently captured" to undergo a trap response. Therefore, the capture states (first/subsequent) are observed from
 the observed capture history. Observation model parameters are estimated quite imprecisely, particularly first capture p0 and
 sigma when the trap response is positive.
+
+4/12/25: Added multi catch observation model from Efford and Borchers 2009 using a competing hazards model.
+
+https://link.springer.com/chapter/10.1007/978-0-387-78151-8_11
+Efford, Murray G., David L. Borchers, and Andrea E. Byrom. 
+"Density estimation by spatially explicit capture–recapture: likelihood-based methods."
+Modeling demographic processes in marked populations (2009): 255-269.
+
+Added Mb + Dcov for single catch traps. Now, there is M0, Mb, M0 + Dcov, Mb + Dcov for single and multi catch traps. I have not tested the
+multicatch versions. Will remove this disclaimer when tested.
+
+

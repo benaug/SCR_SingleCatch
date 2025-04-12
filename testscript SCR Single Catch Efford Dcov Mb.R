@@ -1,15 +1,22 @@
-#this version has a spatial density covariate
+#This version has a behavioral response to capture
+#The assumption is that an individual has to be actually
+#captured, not "latently captured" to undergo a trap response.
+#Therefore, the capture states (first/subsequent) are observed from
+#the observed capture history.
+#Observation model parameters are estimated quite imprecisely.
 
 library(nimble)
 nimbleOptions(determinePredictiveNodesInModel = FALSE) #must run this line
 library(coda)
-source("sim.SCR.singleCatch.Dcov.R") # data simulator
-source("NimbleModel SCR Single Catch Efford Dcov.R") #nimble model file
-source("NimbleFunctions SCR Single Catch Efford Dcov.R") #nimble functions and custom updates
+source("sim.SCR.singleCatch.Dcov.Mb.R") # data simulator
+source("NimbleModel SCR Single Catch Efford Dcov Mb.R") #nimble model file
+source("NimbleFunctions SCR Single Catch Efford Dcov Mb.R") #nimble functions and custom updates
 source("sSampler Dcov.R") #custom activity center update
 
 #Simulate some data
-p0 <- 0.5 #baseline detection
+N <- 50 #Abundance
+p0.p <- 0.25 #baseline detection, first capture
+p0.c <- 0.50 #baseline detection, subsequent capture
 sigma <- 0.50 #spatial scale
 K <- 5 #number of occasions
 X <- as.matrix(expand.grid(2:8,2:8)) #traps 7 x 7 here
@@ -73,31 +80,32 @@ sum(lambda.cell) #expected N in state space
 image(x.vals,y.vals,matrix(lambda.cell*InSS,n.cells.x,n.cells.y),main="Expected Density",col=cols1)
 points(X,pch=4)
 
-set.seed(399405) #setting new seed here since we set the same seed for D.cov above. Change to get new data set
-data <- sim.SCR.singleCatch.Dcov(D.beta0=D.beta0,D.beta1=D.beta1,D.cov=D.cov,InSS=InSS,
-                                 xlim=xlim,ylim=ylim,res=res,p0=p0,sigma=sigma,X=X)
+set.seed(399404) #setting new seed here since we set the same seed for D.cov above. Change to get new data set
+
+data <- sim.SCR.singleCatch.Dcov.Mb(D.beta0=D.beta0,D.beta1=D.beta1,D.cov=D.cov,InSS=InSS,
+                                    xlim=xlim,ylim=ylim,res=res,p0.p=p0.p,p0.c=p0.c,sigma=sigma,X=X)
 
 #What is the observed data?
 str(data$y.obs) #observed capture history
-
-data$N #realized N, make sure M is high enough
+str(data$y.state) #capture states (first vs subsequent)
 
 #Fit model
-M <- 125 #set data augmentation limit
+M <- 150 #set data augmentation limit
 J <- nrow(data$X) #number of traps
 
 #initialize y.true as y.obs
 y.true.init <- array(0,dim=c(M,J,K))
 y.true.init[1:data$n.cap,,] <- data$y.obs
+#augment y.state. y.state is observed data
+y.state <- array(0,dim=c(M,J,K))
+y.state[1:data$n.cap,,] <- data$y.state
 #initialize z and N. N.init must be consistent with z.init
 z.init <- 1*(rowSums(y.true.init)>0)
 N.init <- sum(z.init)
 #initialize s
-xlim <- data$xlim
-ylim <- data$ylim
-s.init <- cbind(runif(M,xlim[1],xlim[2]), runif(M,ylim[1],ylim[2])) #assign random locations
+s.init <- cbind(runif(M,data$xlim[1],data$xlim[2]),runif(M,data$xlim[1],data$xlim[2]))
 y.true.init2D <- apply(y.true.init,c(1,2),sum)
-idx <- which(rowSums(y.true.init2D)>0) #switch for those actually caught
+idx <- which(rowSums(y.true.init2D)>0) #switch for those caught or with latent captures on initialization
 for(i in idx){
   trps <- matrix(X[y.true.init2D[i,]>0,1:2],ncol=2,byrow=FALSE)
   if(nrow(trps)>1){
@@ -106,7 +114,6 @@ for(i in idx){
     s.init[i,] <- trps
   }
 }
-
 #If using a habitat mask, move any s's initialized in non-habitat above to closest habitat
 alldists <- e2dist(s.init,data$dSS)
 alldists[,data$InSS==0] <- Inf
@@ -118,7 +125,6 @@ for(i in 1:M){
     s.init[i,] <- data$dSS[new.cell,]
   }
 }
-
 #initialize capture order
 order2D.init <- matrix(NA,max(data$n.obs.cells),K)
 for(k in 1:K){
@@ -127,36 +133,29 @@ for(k in 1:K){
 
 #initial values for nimble
 Niminits <- list(N=N.init,lambda.N=N.init,D0=sum(z.init)/(sum(data$InSS)*data$res^2),D.beta1=0,
-                 s=s.init,y.true=y.true.init,z=z.init,order2D=order2D.init,
-                 p0=runif(1,0.1,0.9),sigma=runif(1,0.5,1))
+                 p0.p=runif(1,0.1,0.5),p0.c=runif(1,0.3,0.9),sigma=runif(1,0.5,1),
+                 s=s.init,y.true=y.true.init,z=z.init,order2D=order2D.init)
 
 #constants for nimble
-constants <- list(M=M,J=J,K=K,K2D=data$K2D,n.cap=data$n.cap,
+constants <- list(M=M,J=J,K=K,K2D=data$K2D,xlim=data$xlim,ylim=data$ylim,n.cap=data$n.cap,
                   obs.i2D=data$obs.i2D,obs.j2D=data$obs.j2D,n.obs.cells=data$n.obs.cells,
                   D.cov=data$D.cov,cellArea=data$cellArea,n.cells=data$n.cells,
                   xlim=data$xlim,ylim=data$ylim,res=data$res)
 
 #supply data to nimble
 dummy.data <- rep(0,M) #dummy data not used, doesn't really matter what the values are
-Nimdata <- list(y.obs=data$y.obs,X=data$X,dummy.data=dummy.data,cells=cells,InSS=data$InSS)
+Nimdata <- list(X=data$X,y.obs=data$y.obs,y.state=y.state,dummy.data=dummy.data,cells=cells,InSS=data$InSS)
 
 # set parameters to monitor
-parameters <- c('D0','D.beta1','p0','sigma','lambda.N','N','y.true.sum')
+parameters <- c('D0','D.beta1','p0.p','p0.c','sigma','lambda.N','N','y.true.sum')
 parameters2 <- c("lambda.cell",'D0') #record D0 here for plotting
 nt <- 1 #thinning rate for parameters
 nt2 <- 5 #thinning rate for parameters2
-
-
 start.time <- Sys.time()
 Rmodel <- nimbleModel(code=NimModel, constants=constants, data=Nimdata,check=FALSE,inits=Niminits)
-config.nodes <- c('p0','sigma')
-conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,
-                      monitors2=parameters2, thin2=nt2,
-                      useConjugacy = FALSE,nodes=config.nodes)
-
-#add blocked sampler for density parameters. AF_slice mixes better than RW_block, often more ESS/time
-conf$addSampler(target = c("D0","D.beta1"),
-                type = 'AF_slice',control = list(adaptive=TRUE),silent = TRUE)
+config.nodes <- c('p0.p','p0.c','sigma')
+# config.nodes <- c()
+conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,useConjugacy = FALSE,nodes=config.nodes)
 
 #add sampler for y.true
 y.ups <- 2 #no idea what is optimal. 1 might be fine choice.
@@ -174,15 +173,19 @@ conf$addSampler(target = c("N"),
                 silent = TRUE)
 
 #probably worth adding this block sampler
-conf$addSampler(target = c("p0","sigma"),
+conf$addSampler(target = c("p0.p","sigma"),
                 type = 'RW_block',control = list(adaptive=TRUE),silent = TRUE)
+
+#add blocked sampler for density parameters. AF_slice mixes better than RW_block, often more ESS/time
+conf$addSampler(target = c("D0","D.beta1"),
+                type = 'AF_slice',control = list(adaptive=TRUE),silent = TRUE)
 
 #add activity center sampler
 for(i in 1:M){
   conf$addSampler(target = paste("s[",i,", 1:2]", sep=""),
                   type = 'sSamplerDcov',control=list(i=i,res=res,xlim=data$xlim,ylim=data$ylim,
                                                      n.cells.x=data$n.cells.x,n.cells.y=data$n.cells.y,
-                                                 scale=1,adaptive=TRUE),silent = TRUE)
+                                                     scale=1,adaptive=TRUE),silent = TRUE)
 }
 
 # Build and compile
@@ -193,7 +196,7 @@ Cmcmc <- compileNimble(Rmcmc, project = Rmodel)
 
 #if p0 and (especially) sigma too small, starting logProb will return NaN. Don't run, nimble will crash.
 #raise sigma and maybe p0 init.
-Cmodel$calculate() 
+Cmodel$calculate()
 
 # Run the model.
 start.time2 <- Sys.time()
@@ -208,7 +211,6 @@ plot(mcmc(mvSamples[250:nrow(mvSamples),]))
 data$N #true realized abundance
 data$lambda.N #true expected abundance
 sum(data$y.true) #true number of latent captures
-
 
 cor(mvSamples[250:nrow(mvSamples),]) #posterior correlation
 
