@@ -58,7 +58,6 @@ sim.SCR.singleCatch.Dcov <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,xlim
   y <- array(0,dim=c(N,J,K))
   store.n.animals <- store.n.traps <- rep(0,K)
   y.order <- array(Inf,dim=c(N,J,K))
-  logProb <- 0
   for(k in 1:K){
     n.total.cap <- sum(times[,,k]<Inf)
     n.animals <- sum(1*((rowSums(times[,,k]<Inf))>0))
@@ -73,11 +72,6 @@ sim.SCR.singleCatch.Dcov <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,xlim
       focal.lambda <- lambda[this.cap[1],this.cap[2]]
       other.lambdas <- lambda[which(times[,,k]<Inf)]
       other.lambdas <- other.lambdas[-which(other.lambdas==focal.lambda)]
-      if(n.animals>1|n.traps>1){
-        logProb <- logProb + pSmaller(focal.lambda,other.lambdas,log=TRUE)
-      }else{
-        logProb <- logProb + 0 #only 1 to select
-      }
       times[this.cap[1],,k] <- Inf
       times[,this.cap[2],k] <- Inf
       n.animals <- sum(1*((rowSums(times[,,k]<Inf))>0))
