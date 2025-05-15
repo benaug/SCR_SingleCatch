@@ -31,6 +31,8 @@ observed capture, we need to update the y.true[i,1:J,k] to consider the possibil
 traps on this occasion if they were not stuck in the trap where they were actually captured. Finally, the capture order for
 the observed captures must be updated. This is all in "ySampler" in the NimbleFunctions file.
 
+These models use count prior data augmentation: https://github.com/benaug/SCR-Count-Prior-Data-Augmentation
+
 This approach is pretty slow. I did a simulation study with a N=50 (M=100), J=49, K=5, which I did not time
 but I think it took about 1.5hr to run 20K iterations and could really get by with 10K. Run time will slow down raising
 N, J, and K. I tried a few short runs with 50 x 144 x 5 and that wasn't too slow. Raising N does really slow things down. There
