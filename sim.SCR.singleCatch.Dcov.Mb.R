@@ -8,7 +8,7 @@ sim.SCR.singleCatch.Dcov.Mb <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,x
                                         p0.p=NA,p0.c=NA,sigma=NA,X=NA){
   #get expected N
   cellArea <- res^2
-  lambda.cell <- exp(D.beta0 + D.beta1*D.cov)*cellArea
+  lambda.cell <- InSS*exp(D.beta0 + D.beta1*D.cov)*cellArea
   lambda.N <- sum(lambda.cell)
   #simulate realized N
   N <- rpois(1,lambda.N)
