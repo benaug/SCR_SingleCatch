@@ -23,7 +23,7 @@ NimModel <- nimbleCode({
     s.cell[i] <- cells[trunc(s[i,1]/res)+1,trunc(s[i,2]/res)+1]
     #categorical likelihood for this cell, equivalent to zero's trick
     #also disallowing s's in non-habitat
-    dummy.data[i] ~ dCell(pi.cell[s.cell[i]],InSS=InSS[s.cell[i]])
+    dummy.data[i] ~ dCell(pi.cell[s.cell[i]])
     kern[i,1:J] <- GetKern(s=s[i,1:2],X=X[1:J,1:2],J=J,sigma=sigma, z=z[i])
     pd.p[i,1:J] <- GetPd(kern=kern[i,1:J],p0=p0.p,J=J,z=z[i])
     pd.c[i,1:J] <- GetPd(kern=kern[i,1:J],p0=p0.c,J=J,z=z[i])
