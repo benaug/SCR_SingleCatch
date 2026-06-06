@@ -31,8 +31,8 @@ sim.SCR.multiCatch.Dcov.Mb <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,xl
   s <- matrix(NA,nrow=N,ncol=2)
   for(i in 1:N){
     tmp <- which(cells==s.cell[i],arr.ind=TRUE) #x and y number
-    s[i,1] <- runif(1,x.vals[tmp[1]]-res/2,x.vals[tmp[1]+res/2])
-    s[i,2] <- runif(1,y.vals[tmp[2]]-res/2,y.vals[tmp[2]+res/2])
+    s[i,1] <- runif(1,x.vals[tmp[1]]-res/2,x.vals[tmp[1]]+res/2)
+    s[i,2] <- runif(1,y.vals[tmp[2]]-res/2,y.vals[tmp[2]]+res/2)
   }
   D <- e2dist(s,X)
   pd.p <- p0.p*exp(-D*D/(2*sigma*sigma))
