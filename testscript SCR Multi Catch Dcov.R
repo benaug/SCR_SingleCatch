@@ -80,7 +80,7 @@ points(X,pch=4)
 
 set.seed(399404) #setting new seed here since we set the same seed for D.cov above. Change to get new data set
 data <- sim.SCR.multiCatch.Dcov(D.beta0=D.beta0,D.beta1=D.beta1,D.cov=D.cov,InSS=InSS,
-                                 xlim=xlim,ylim=ylim,res=res,p0=p0,sigma=sigma,X=X)
+                                 xlim=xlim,ylim=ylim,res=res,p0=p0,sigma=sigma,X=X,K=K)
 
 #What is the observed data?
 str(data$y) #n x J x K detection history

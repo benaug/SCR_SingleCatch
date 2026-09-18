@@ -4,7 +4,7 @@ e2dist <- function (x, y){
   matrix(dvec, nrow = nrow(x), ncol = nrow(y), byrow = F)
 }
 
-sim.SCR.multiCatch.Mb <- function(N=NA,p0.p=NA,p0.c=NA,sigma=NA,X=NA,buff=NA){
+sim.SCR.multiCatch.Mb <- function(N=NA,p0.p=NA,p0.c=NA,sigma=NA,X=NA,buff=NA,K=NA){
   xlim <- range(X[,1]) + c(-buff,buff)
   ylim <- range(X[,2]) + c(-buff,buff)
   s <- cbind(runif(N,xlim[1],xlim[2]),runif(N,ylim[1],ylim[2]))

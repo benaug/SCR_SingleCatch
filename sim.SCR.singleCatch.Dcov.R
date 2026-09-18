@@ -5,7 +5,7 @@ e2dist <- function (x, y){
 }
 
 sim.SCR.singleCatch.Dcov <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,xlim=NA,ylim=NA,res=NA,
-                                      p0=NA,sigma=NA,X=NA){
+                                      p0=NA,sigma=NA,X=NA,K=NA){
   #get expected N
   cellArea <- res^2
   lambda.cell <- InSS*exp(D.beta0 + D.beta1*D.cov)*cellArea
@@ -96,7 +96,7 @@ sim.SCR.singleCatch.Dcov <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,xlim
   }
   
   n.obs.cells <- as.numeric(colSums(table(obs.j,obs.k)))
-  obs.i2D <- obs.j2D <- order2D <- matrix(NA,max(n.obs.cells),5)
+  obs.i2D <- obs.j2D <- order2D <- matrix(NA,max(n.obs.cells),K)
   for(k in 1:K){
     obs.i2D[1:n.obs.cells[k],k] <- as.double(obs.i[obs.k==k]) #must be double for custom update
     obs.j2D[1:n.obs.cells[k],k] <- as.double(obs.j[obs.k==k])

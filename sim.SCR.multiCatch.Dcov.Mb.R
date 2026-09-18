@@ -5,7 +5,7 @@ e2dist <- function (x, y){
 }
 
 sim.SCR.multiCatch.Dcov.Mb <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,xlim=NA,ylim=NA,res=NA,
-                                       p0.p=NA,p0.c=NA,sigma=NA,X=NA){
+                                       p0.p=NA,p0.c=NA,sigma=NA,X=NA,K=NA){
   #get expected N
   cellArea <- res^2
   lambda.cell <- InSS*exp(D.beta0 + D.beta1*D.cov)*cellArea

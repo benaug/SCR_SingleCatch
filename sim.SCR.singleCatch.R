@@ -4,7 +4,7 @@ e2dist <- function (x, y){
   matrix(dvec, nrow = nrow(x), ncol = nrow(y), byrow = F)
 }
 
-sim.SCR.singleCatch <- function(N=NA,p0=NA,sigma=NA,X=NA,buff=NA){
+sim.SCR.singleCatch <- function(N=NA,p0=NA,sigma=NA,X=NA,K=NA,buff=NA){
   xlim <- range(X[,1]) + c(-buff,buff)
   ylim <- range(X[,2]) + c(-buff,buff)
   s <- cbind(runif(N,xlim[1],xlim[2]),runif(N,ylim[1],ylim[2]))
@@ -70,7 +70,7 @@ sim.SCR.singleCatch <- function(N=NA,p0=NA,sigma=NA,X=NA,buff=NA){
   }
   
   n.obs.cells <- as.numeric(colSums(table(obs.j,obs.k)))
-  obs.i2D <- obs.j2D <- order2D <- matrix(NA,max(n.obs.cells),5)
+  obs.i2D <- obs.j2D <- order2D <- matrix(NA,max(n.obs.cells),K)
   for(k in 1:K){
     obs.i2D[1:n.obs.cells[k],k] <- as.double(obs.i[obs.k==k]) #must be double for custom update
     obs.j2D[1:n.obs.cells[k],k] <- as.double(obs.j[obs.k==k])

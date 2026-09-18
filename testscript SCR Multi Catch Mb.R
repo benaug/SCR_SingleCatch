@@ -20,7 +20,7 @@ K <- 5 #number of occasions
 X <- as.matrix(expand.grid(2:8,2:8)) #traps 7 x 7 here
 buff <- 2 #state space buffer around maximal trap extent
 
-data <- sim.SCR.multiCatch.Mb(N=N,p0.p=p0.p,p0.c=p0.c,sigma=sigma,X=X,buff=buff) #simulates complete trap operation
+data <- sim.SCR.multiCatch.Mb(N=N,p0.p=p0.p,p0.c=p0.c,sigma=sigma,X=X,buff=buff,K=K) #simulates complete trap operation
 
 #What is the observed data?
 str(data$y) #n x J x K detection history

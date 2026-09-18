@@ -13,7 +13,7 @@ K <- 5 #number of occasions
 X <- as.matrix(expand.grid(2:8,2:8)) #traps 7 x 7 here
 buff <- 2 #state space buffer around maximal trap extent
 
-data <- sim.SCR.singleCatch(N=N,p0=p0,sigma=sigma,X=X,buff=buff)
+data <- sim.SCR.singleCatch(N=N,p0=p0,sigma=sigma,X=X,K=K,buff=buff)
 
 #What is the observed data?
 str(data$y.obs) #observed capture history
