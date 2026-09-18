@@ -102,35 +102,42 @@ rBernoulliMatrixMb <- nimbleFunction(
 
 #used in pSmaller() below
 integrand <- nimbleFunction(
-  run = function(x = double(1),param = double(1)){ 
+  run = function(x = double(1), param = double(1)){ 
     returnType(double(1))
-    n1 <- length(param)
+    # param contains:
+    # lambda1, lambda2[1:n], exp(-lambda2[1:n])
+    n <- (length(param) - 1) / 2
     lambda1 <- param[1]
-    lambda2 <- param[2:n1]
-    n <- length(lambda2)
+    #can split vector, but faster to not split it
+    #lambda2 <- param[2:(n+1)]
+    #exp.lambda2 <- param[(n+2):(2*n+1)]
     n.x <- length(x)
     prod.term <- exp(-lambda1 * x)
     for(j in 1:n.x){
       for(i in 1:n){
-        prod.term[j] <- prod.term[j] * (exp(-lambda2[i] * x[j]) - exp(-lambda2[i]))
+        #if vector split
+        # prod.term[j] <- prod.term[j] * (exp(-lambda2[i] * x[j]) - exp.lambda2[i])
+        #if not split
+        prod.term[j] <- prod.term[j] * (exp(-param[i+1] * x[j]) - param[n+i+1])
       }
     }
     return(prod.term)
   })
 
-#probability exponential RV right-truncated at 1 with parameter lambda1 is less than one or more other exponential
-#RVs right-truncated at 1 with parameter(s) lambda2
+#probability exponential RV right-truncated at 1 with parameter lambda1 is less than
+#one or more other exponential RVs right-truncated at 1 with parameter(s) lambda2
 pSmaller <- nimbleFunction(
   run = function(lambda1 = double(0), lambda2 = double(1), log = integer(0)) {
     returnType(double(0))
-    param = c(lambda1,lambda2)
+    exp.lambda2 <- exp(-lambda2)
+    # pass precomputed exp(-lambda2) to integrand
+    param <- c(lambda1,lambda2,exp.lambda2)
     #integral from 0 to 1
     integral <- nimIntegrate(integrand, lower = 0, upper = 1, param = param)[1]
     #denominator terms
     lambda.term <- 1 - exp(-lambda1)
-    lambda2.prod <- prod(1 - exp(-lambda2))
-    # prob <- (lambda1 / (lambda.term * lambda2.prod)) * integral
-    logProb <- log(lambda1*integral) - log(lambda.term * lambda2.prod) #less likely to underflow
+    lambda2.prod <- prod(1 - exp.lambda2)
+    logProb <- log(lambda1*integral) - log(lambda.term * lambda2.prod)
     if(log){
       return(logProb)
     }else{
@@ -140,53 +147,89 @@ pSmaller <- nimbleFunction(
 
 dThin <- nimbleFunction(
   run = function(x = double(2), y.true = double(2), y.state = double(2), lambda.p = double(2),
-                 lambda.c = double(2), order = double(1), obs.i = double(1),obs.j = double(1), 
+                 lambda.c = double(2), order = double(1), obs.i = double(1), obs.j = double(1), 
                  n.cap = double(0), log = integer(0)) {
     returnType(double(0))
     M <- nimDim(y.true)[1]
     J <- nimDim(y.true)[2]
-    lambda.tmp <- lambda.p #plug in first or subsequent capture
+    
+    #track availability
+    i.available <- rep(1,M)
+    j.available <- rep(1,J)
+    y.is.one <- y.true==1 #which elements of y.true are 1?
+    #identify indices of latent capture events once
+    n.latent <- sum(y.is.one)
+    latent.i <- rep(0, n.latent)
+    latent.j <- rep(0, n.latent)
+    idx.latent <- 1
     for(i in 1:M){
       for(j in 1:J){
-        if((y.state[i,j]==1)){ #if previously captured, use subsequent capture times
-          lambda.tmp[i,j] <- lambda.c[i,j]
+        if(y.is.one[i,j]){
+          latent.i[idx.latent] <- i
+          latent.j[idx.latent] <- j
+          idx.latent <- idx.latent + 1
         }
       }
-    } 
-    y.is.one <- y.true==1 #which elements of y.true are 1?
+    }
+    
+    #construct inverse capture order
+    order.idx <- rep(0, length(order))
+    for(ii in 1:length(order)){
+      order.idx[order[ii]] <- ii
+    }
     logProb <- 0
     for(o in 1:(length(order)-1)){ #we do not need the final logProb which is always 0
-      idx <- which(order==o)[1]
-      focal.lambda <- lambda.tmp[obs.i[idx],obs.j[idx]]
-      n.other.lambdas <- sum(y.is.one&lambda.tmp<Inf)-1
-      #excluding lambdas of 0. leads to nonfinite logProb, these inds will never be captured so they cannot get there first
+      idx <- order.idx[o]
+      #choose first/subsequent-capture lambda from y.state
+      if(y.state[obs.i[idx],obs.j[idx]]==0){
+        focal.lambda <- lambda.p[obs.i[idx],obs.j[idx]]
+      }else{
+        focal.lambda <- lambda.c[obs.i[idx],obs.j[idx]]
+      }
+      #count remaining latent capture events using availability vectors
+      n.other.lambdas <- 0
+      for(l in 1:n.latent){
+        i <- latent.i[l]
+        j <- latent.j[l]
+        if(i.available[i]==1){
+          if(j.available[j]==1){
+            if(!(i==obs.i[idx]&j==obs.j[idx])){
+              n.other.lambdas <- n.other.lambdas + 1
+            }
+          }
+        }
+      }
+      #excluding lambdas of 0 leads to nonfinite logProb;
+      #these inds will never be captured so they cannot get there first
       if(n.other.lambdas>0){
-        other.lambdas <- rep(0,n.other.lambdas) #lambda < Inf is not using traps removed below on next loop iteration
+        other.lambdas <- rep(0,n.other.lambdas)
         idx2 <- 1
-        for(i in 1:M){
-          for(j in 1:J){
-            if(y.is.one[i,j]){
-              if(lambda.tmp[i,j]<Inf){ #if a latent capture
-                if(!(i==obs.i[idx]&j==obs.j[idx])){ #don't include focal
-                  other.lambdas[idx2] <- lambda.tmp[i,j]
-                  idx2 <- idx2 + 1
+        for(l in 1:n.latent){
+          i <- latent.i[l]
+          j <- latent.j[l]
+          if(i.available[i]==1){
+            if(j.available[j]==1){
+              if(!(i==obs.i[idx]&j==obs.j[idx])){
+                if(y.state[i,j]==0){
+                  other.lambdas[idx2] <- lambda.p[i,j]
+                }else{
+                  other.lambdas[idx2] <- lambda.c[i,j]
                 }
+                idx2 <- idx2 + 1
               }
             }
           }
         }
         logProb <- logProb + pSmaller(focal.lambda,other.lambdas,log=TRUE)
-      } #else add logProb of 0. But we are just skipping the last index in the o loop
-      #zero out this individual and trap
-      lambda.tmp[obs.i[idx],] <- Inf
-      lambda.tmp[,obs.j[idx]] <- Inf
+      }
+      i.available[obs.i[idx]] <- 0
+      j.available[obs.j[idx]] <- 0
     }
     if(log){
       return(logProb)
     }else{
       return(exp(logProb))
     }
-    return(logProb)
   })
 
 rThin <- nimbleFunction(
