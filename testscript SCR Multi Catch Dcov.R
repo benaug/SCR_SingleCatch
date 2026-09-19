@@ -98,7 +98,7 @@ y[1:data$n.cap,,] <- data$y
 z.init <- 1*(rowSums(y)>0)
 N.init <- sum(z.init)
 #initialize s
-s.init <- cbind(runif(M,data$xlim[1],data$xlim[2]),runif(M,data$xlim[1],data$xlim[2]))
+s.init <- cbind(runif(M,data$xlim[1],data$xlim[2]),runif(M,data$ylim[1],data$ylim[2]))
 y2D <- apply(y,c(1,2),sum)
 idx <- which(rowSums(y2D)>0) #switch for those caught or with latent captures on initialization
 for(i in idx){

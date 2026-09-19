@@ -103,7 +103,7 @@ y.state[1:data$n.cap,,] <- data$y.state
 z.init <- 1*(rowSums(y.true.init)>0)
 N.init <- sum(z.init)
 #initialize s
-s.init <- cbind(runif(M,data$xlim[1],data$xlim[2]),runif(M,data$xlim[1],data$xlim[2]))
+s.init <- cbind(runif(M,data$xlim[1],data$xlim[2]),runif(M,data$ylim[1],data$ylim[2]))
 y.true.init2D <- apply(y.true.init,c(1,2),sum)
 idx <- which(rowSums(y.true.init2D)>0) #switch for those caught or with latent captures on initialization
 for(i in idx){
