@@ -28,7 +28,7 @@ str(data$y.state) #n x J x K capture state history
 #after augmenting n up to M, we will convert to M x K detection history, recording trap of capture on occasion k, 0 if not captured
 
 #Fit model
-M <- 125 #set data augmentation limit
+M <- 200 #set data augmentation limit
 J <- nrow(data$X) #number of traps
 
 #initialize y. M x J x K detection history here, used to initialize s. then convert to M x K.
