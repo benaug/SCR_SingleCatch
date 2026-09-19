@@ -22,46 +22,34 @@ GetPd <- nimbleFunction(
   }
 )
 
-GetPdMulti <- nimbleFunction(
-  run = function(y.state = double(2),pd.p = double(1),pd.c = double(1), K2D = double(2), z = double(0)){ 
-    returnType(double(2))
-    J <- nimDim(K2D)[1]
-    K <- nimDim(K2D)[2]
-    if(z==0){
-      pd.multi <- matrix(0,J,K)
-    }else{
-      pd.multi <- matrix(0,J,K)
-      for(k in 1:K){
-        pd.use <- rep(0,J)
-        for(j in 1:J){
-          if(y.state[j,k]==0){
-            pd.use[j] <- pd.p[j]
-          }else{
-            pd.use[j] <- pd.c[j]
-          }
-        }
-        lambda <- -log(1-pd.use[1:J]*K2D[1:J,k])
-        lambda.dot <- sum(lambda)
-        pd.multi[,k] <- (lambda/lambda.dot)*(1-exp(-lambda.dot))
-      }
-    }
-    return(pd.multi)
-  }
-)
-
 dObsMatrix <- nimbleFunction(
-  run = function(x = double(1), pd.multi = double(2), K2D = double(2), K = double(0), z = double(0),
-                 log = integer(0)) {
+  run = function(x = double(1), y.state = double(2), pd.p = double(1), pd.c = double(1),
+                 K2D = double(2), K = double(0), z = double(0), log = integer(0)) {
     returnType(double(0))
-    if(z==0){#skip calculation if z=0
+    if(z==0){
       return(0)
     }else{
+      J <- nimDim(K2D)[1]
       logProb <- 0
       for(k in 1:K){
-        if(x[k]>0){ #captured on this occasion in trap x[k]
-          logProb <- logProb + log(pd.multi[x[k],k])
-        }else{ #not captured on this occasion in any trap
-          logProb <- logProb + log(1-sum(pd.multi[K2D[,k]==1,k]))
+        lambda.dot <- 0
+        lambda.cap <- 0
+        for(j in 1:J){
+          if(y.state[j,k]==0){
+            lambda <- -log1p(-pd.p[j]*K2D[j,k]) #numerically stable for small pd
+          }else{
+            lambda <- -log1p(-pd.c[j]*K2D[j,k]) #numerically stable for small pd
+          }
+          lambda.dot <- lambda.dot + lambda
+          if(x[k]==j){
+            lambda.cap <- lambda
+          }
+        }
+        if(x[k]>0){
+          logProb <- logProb + log(lambda.cap) - log(lambda.dot) +
+            log(1-exp(-lambda.dot))
+        }else{
+          logProb <- logProb - lambda.dot
         }
       }
       return(logProb)
@@ -71,9 +59,9 @@ dObsMatrix <- nimbleFunction(
 
 #make dummy random vector generator to make nimble happy
 rObsMatrix <- nimbleFunction(
-  run = function(n = integer(0), pd.multi = double(2), K2D = double(2), K = double(0), z = double(0)) {
+  run = function(n = integer(0), y.state = double(2), pd.p = double(1), pd.c = double(1),
+                 K2D = double(2), K = double(0), z = double(0)) {
     returnType(double(1))
-    K <- nimDim(K2D)[2]
     out <- rep(0,K)
     return(out)
   }
@@ -93,8 +81,7 @@ zSampler <- nimbleFunction(
     kern.nodes <- model$expandNodeNames(paste("kern"))
     pd.p.nodes <- model$expandNodeNames(paste("pd.p"))
     pd.c.nodes <- model$expandNodeNames(paste("pd.c"))
-    pd.multi.nodes <- model$expandNodeNames(paste("pd.multi"))
-    calcNodes <- c(N.node,z.nodes,kern.nodes,pd.p.nodes,pd.c.nodes,pd.multi.nodes,y.nodes)
+    calcNodes <- c(N.node,z.nodes,kern.nodes,pd.p.nodes,pd.c.nodes,y.nodes)
   },
   run = function(){
     for(up in 1:z.ups){ #how many updates per iteration?
@@ -123,8 +110,7 @@ zSampler <- nimbleFunction(
           model$calculate(kern.nodes[pick])
           model$calculate(pd.p.nodes[pick])
           model$calculate(pd.c.nodes[pick])
-          model$calculate(pd.multi.nodes[pick])
-          
+
           #get proposed logprobs for N and y
           lp.proposed.N <- model$calculate(N.node)
           lp.proposed.y <- model$calculate(y.nodes[pick]) #will always be 0
@@ -137,18 +123,12 @@ zSampler <- nimbleFunction(
             mvSaved["kern",1][pick,] <<- model[["kern"]][pick,]
             mvSaved["pd.p",1][pick,] <<- model[["pd.p"]][pick,]
             mvSaved["pd.c",1][pick,] <<- model[["pd.c"]][pick,]
-            for(k in 1:K){
-              mvSaved["pd.multi",1][pick,,k] <<- model[["pd.multi"]][pick,,k]
-            }
             mvSaved["z",1][pick] <<- model[["z"]][pick]
           }else{
             model[["N"]] <<- mvSaved["N",1][1]
             model[["kern"]][pick,] <<- mvSaved["kern",1][pick,]
             model[["pd.p"]][pick,] <<- mvSaved["pd.p",1][pick,]
             model[["pd.c"]][pick,] <<- mvSaved["pd.c",1][pick,]
-            for(k in 1:K){
-              model[["pd.multi"]][pick,,k] <<- mvSaved["pd.multi",1][pick,,k]
-            }
             model[["z"]][pick] <<- mvSaved["z",1][pick]
             model$calculate(y.nodes[pick])
             model$calculate(N.node)
@@ -173,8 +153,7 @@ zSampler <- nimbleFunction(
           model$calculate(kern.nodes[pick])
           model$calculate(pd.p.nodes[pick])
           model$calculate(pd.c.nodes[pick])
-          model$calculate(pd.multi.nodes[pick])
-          
+
           #get proposed logprobs for N and y
           lp.proposed.N <- model$calculate(N.node)
           lp.proposed.y <- model$calculate(y.nodes[pick])
@@ -187,18 +166,13 @@ zSampler <- nimbleFunction(
             mvSaved["kern",1][pick,] <<- model[["kern"]][pick,]
             mvSaved["pd.p",1][pick,] <<- model[["pd.p"]][pick,]
             mvSaved["pd.c",1][pick,] <<- model[["pd.c"]][pick,]
-            for(k in 1:K){
-              mvSaved["pd.multi",1][pick,,k] <<- model[["pd.multi"]][pick,,k]
-            }
             mvSaved["z",1][pick] <<- model[["z"]][pick]
           }else{
             model[["N"]] <<- mvSaved["N",1][1]
             model[["kern"]][pick,] <<- mvSaved["kern",1][pick,]
             model[["pd.p"]][pick,] <<- mvSaved["pd.p",1][pick,]
             model[["pd.c"]][pick,] <<- mvSaved["pd.c",1][pick,]
-            for(k in 1:K){
-              model[["pd.multi"]][pick,,k] <<- mvSaved["pd.multi",1][pick,,k]
-            }
+
             model[["z"]][pick] <<- mvSaved["z",1][pick]
             model$calculate(y.nodes[pick])
             model$calculate(N.node)
