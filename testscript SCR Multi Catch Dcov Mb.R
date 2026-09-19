@@ -180,7 +180,7 @@ conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,
 #add sampler for N/z
 z.ups <- round(M*0.25) # how many z proposals per iteration? 25% of M generally seems good, but no idea what is optimal
 conf$addSampler(target = c("N"),
-                type = 'zSampler',control = list(z.ups=z.ups,M=M,K=K,inds.detected=which(rowSums(y)>0)),
+                type = 'zSampler',control = list(z.ups=z.ups,M=M,inds.detected=which(rowSums(y)>0)),
                 silent = TRUE)
 
 #adding this block sampler might help, check posterior correlation
