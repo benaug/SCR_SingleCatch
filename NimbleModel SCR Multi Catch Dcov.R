@@ -26,6 +26,6 @@ NimModel <- nimbleCode({
     dummy.data[i] ~ dCell(pi.cell[s.cell[i]])
     pd[i,1:J] <- GetPd(s=s[i,1:2],X=X[1:J,1:2],J=J,sigma=sigma,p0=p0,z=z[i])
     #detection data are trap of capture on each occasion, 0 if not captured
-    y[i,1:K] ~ dObsMatrix(pd=pd[i,1:J],K2D=K2D[1:J,1:K],K=K,z=z[i])
+    y[i,1:K] ~ dObsMatrix(pd=pd[i,1:J],K2D=K2D[1:J,1:K],K1D=K1D[1:J],K=K,z=z[i])
   }
 })

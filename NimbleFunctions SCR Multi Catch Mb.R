@@ -22,34 +22,57 @@ GetPd <- nimbleFunction(
   }
 )
 
+#this version is faster than the one below
 dObsMatrix <- nimbleFunction(
   run = function(x = double(1), y.state = double(2), pd.p = double(1), pd.c = double(1),
-                 K2D = double(2), K = double(0), z = double(0), log = integer(0)) {
+                 K2D = double(2), K1D.p = double(1), K1D.c = double(1),
+                 K = double(0), z = double(0), log = integer(0)) {
     returnType(double(0))
     if(z==0){
       return(0)
     }else{
       J <- nimDim(K2D)[1]
+      lambda.p <- rep(0,J)
+      lambda.c <- rep(0,J)
       logProb <- 0
-      for(k in 1:K){
-        lambda.dot <- 0
-        lambda.cap <- 0
-        for(j in 1:J){
-          if(y.state[j,k]==0){
-            lambda <- -log1p(-pd.p[j]*K2D[j,k]) #numerically stable for small pd
-          }else{
-            lambda <- -log1p(-pd.c[j]*K2D[j,k]) #numerically stable for small pd
-          }
-          lambda.dot <- lambda.dot + lambda
-          if(x[k]==j){
-            lambda.cap <- lambda
-          }
+      
+      #likelihood assuming no captures on any occasion
+      for(j in 1:J){
+        if(K1D.p[j]>0){
+          lambda.p[j] <- -log1p(-pd.p[j])
+          logProb <- logProb - lambda.p[j]*K1D.p[j]
         }
+        if(K1D.c[j]>0){
+          lambda.c[j] <- -log1p(-pd.c[j])
+          logProb <- logProb - lambda.c[j]*K1D.c[j]
+        }
+      }
+      
+      #replace noncapture likelihood with capture likelihood where captured
+      for(k in 1:K){
         if(x[k]>0){
-          logProb <- logProb + log(lambda.cap) - log(lambda.dot) +
-            log(1-exp(-lambda.dot))
-        }else{
-          logProb <- logProb - lambda.dot
+          lambda.dot <- 0
+          for(j in 1:J){
+            if(K2D[j,k]==1){
+              if(y.state[j,k]==0){
+                lambda.dot <- lambda.dot + lambda.p[j]
+              }else{
+                lambda.dot <- lambda.dot + lambda.c[j]
+              }
+            }
+          }
+          
+          if(K2D[x[k],k]==1){
+            if(y.state[x[k],k]==0){
+              lambda.cap <- lambda.p[x[k]]
+            }else{
+              lambda.cap <- lambda.c[x[k]]
+            }
+            logProb <- logProb + lambda.dot + log(lambda.cap) - log(lambda.dot) +
+              log(1-exp(-lambda.dot))
+          }else{
+            return(-Inf)
+          }
         }
       }
       return(logProb)
@@ -60,12 +83,58 @@ dObsMatrix <- nimbleFunction(
 #make dummy random vector generator to make nimble happy
 rObsMatrix <- nimbleFunction(
   run = function(n = integer(0), y.state = double(2), pd.p = double(1), pd.c = double(1),
-                 K2D = double(2), K = double(0), z = double(0)) {
+                 K2D = double(2), K1D.p = double(1), K1D.c = double(1),
+                 K = double(0), z = double(0)) {
     returnType(double(1))
     out <- rep(0,K)
     return(out)
   }
 )
+
+# dObsMatrix <- nimbleFunction(
+#   run = function(x = double(1), y.state = double(2), pd.p = double(1), pd.c = double(1),
+#                  K2D = double(2), K = double(0), z = double(0), log = integer(0)) {
+#     returnType(double(0))
+#     if(z==0){
+#       return(0)
+#     }else{
+#       J <- nimDim(K2D)[1]
+#       logProb <- 0
+#       for(k in 1:K){
+#         lambda.dot <- 0
+#         lambda.cap <- 0
+#         for(j in 1:J){
+#           if(y.state[j,k]==0){
+#             lambda <- -log1p(-pd.p[j]*K2D[j,k]) #numerically stable for small pd
+#           }else{
+#             lambda <- -log1p(-pd.c[j]*K2D[j,k]) #numerically stable for small pd
+#           }
+#           lambda.dot <- lambda.dot + lambda
+#           if(x[k]==j){
+#             lambda.cap <- lambda
+#           }
+#         }
+#         if(x[k]>0){
+#           logProb <- logProb + log(lambda.cap) - log(lambda.dot) +
+#             log(1-exp(-lambda.dot))
+#         }else{
+#           logProb <- logProb - lambda.dot
+#         }
+#       }
+#       return(logProb)
+#     }
+#   }
+# )
+# 
+# #make dummy random vector generator to make nimble happy
+# rObsMatrix <- nimbleFunction(
+#   run = function(n = integer(0), y.state = double(2), pd.p = double(1), pd.c = double(1),
+#                  K2D = double(2), K = double(0), z = double(0)) {
+#     returnType(double(1))
+#     out <- rep(0,K)
+#     return(out)
+#   }
+# )
 
 zSampler <- nimbleFunction(
   contains = sampler_BASE,

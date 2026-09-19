@@ -141,7 +141,8 @@ Niminits <- list(N=N.init,lambda.N=N.init,D0=sum(z.init)/(sum(data$InSS)*data$re
                  s=s.init,z=z.init,p0=runif(1,0.1,0.9),sigma=runif(1,0.5,1))
 
 #constants for nimble
-constants <- list(M=M,J=J,K=K,K2D=data$K2D,D.cov=data$D.cov,cellArea=data$cellArea,
+K1D <- rowSums(data$K2D)
+constants <- list(M=M,J=J,K=K,K2D=data$K2D,K1D=K1D,D.cov=data$D.cov,cellArea=data$cellArea,
                   n.cells=data$n.cells,xlim=data$xlim,ylim=data$ylim,res=data$res)
 
 #supply data to nimble

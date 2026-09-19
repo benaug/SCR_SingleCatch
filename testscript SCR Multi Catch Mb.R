@@ -73,7 +73,15 @@ Niminits <- list(lambda.N=N.init,p0.p=runif(1,0.1,0.9),p0.c=runif(1,0.1,0.9),
                  sigma=runif(1,0.5,1),s=s.init,z=z.init,N=N.init)
 
 #constants for nimble
-constants <- list(M=M,J=J,K=K,K2D=data$K2D,xlim=data$xlim,ylim=data$ylim)
+#need this to use more efficient observation model
+#number of occasions each trap is in p or c state for each individual
+K1D.p <- matrix(0,M,J)
+K1D.c <- matrix(0,M,J)
+for(i in 1:M){
+  K1D.p[i,] <- rowSums(data$K2D*(1-y.state[i,,]))
+  K1D.c[i,] <- rowSums(data$K2D*y.state[i,,])
+}
+constants <- list(M=M,J=J,K=K,K2D=data$K2D,K1D.p=K1D.p,K1D.c=K1D.c,xlim=data$xlim,ylim=data$ylim)
 
 #supply data to nimble
 Nimdata <- list(X=data$X,y=y,y.state=y.state)

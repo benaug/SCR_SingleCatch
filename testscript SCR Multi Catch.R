@@ -68,7 +68,8 @@ Niminits <- list(lambda.N=N.init,p0=runif(1,0.1,0.9),sigma=runif(1,0.5,1),
                  s=s.init,z=z.init,N=N.init)
 
 #constants for nimble
-constants <- list(M=M,J=J,K=K,K2D=data$K2D,xlim=data$xlim,ylim=data$ylim)
+K1D <- rowSums(data$K2D)
+constants <- list(M=M,J=J,K=K,K2D=data$K2D,K1D=K1D,xlim=data$xlim,ylim=data$ylim)
 
 #supply data to nimble
 Nimdata <- list(X=data$X,y=y)
