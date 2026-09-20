@@ -93,7 +93,7 @@ start.time <- Sys.time()
 Rmodel <- nimbleModel(code=NimModel, constants=constants, data=Nimdata,check=FALSE,inits=Niminits)
 config.nodes <- c('p0.p','p0.c','sigma','lambda.N')
 # config.nodes <- c()
-conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,useConjugacy = FALSE,nodes=config.nodes)
+conf <- configureMCMC(Rmodel,monitors=parameters,thin=nt,nodes=config.nodes)
 
 #add sampler for N/z
 z.ups <- round(M*0.25) # how many z proposals per iteration? 25% of M generally seems good, but no idea what is optimal

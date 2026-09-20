@@ -120,9 +120,11 @@ for(i in 1:M){
 }
 
 #initialize capture order
-order2D.init <- matrix(NA,max(data$n.obs.cells),K)
+order2D.init <- matrix(1,data$n.obs.cells.max,K) #pad this to play nice with nimble when 0 captures on an occasion
 for(k in 1:K){
-  order2D.init[1:data$n.obs.cells[k],k] <- sample(1:data$n.obs.cells[k],data$n.obs.cells[k],replace=FALSE)
+  if(data$n.obs.cells[k]>0){
+    order2D.init[1:data$n.obs.cells[k],k] <-sample(1:data$n.obs.cells[k],data$n.obs.cells[k],replace=FALSE)
+  }
 }
 
 #initial values for nimble
@@ -131,7 +133,8 @@ Niminits <- list(N=N.init,lambda.N=N.init,D0=sum(z.init)/(sum(data$InSS)*data$re
                  p0=runif(1,0.1,0.9),sigma=runif(1,0.5,1))
 
 #constants for nimble
-constants <- list(M=M,J=J,K=K,K2D=data$K2D,n.cap=data$n.cap,
+K1D <- rowSums(data$K2D) #number of operating occasions at each trap
+constants <- list(M=M,J=J,K=K,K2D=data$K2D,K1D=K1D,n.cap=data$n.cap,n.obs.cells.max=data$n.obs.cells.max,
                   obs.i2D=data$obs.i2D,obs.j2D=data$obs.j2D,n.obs.cells=data$n.obs.cells,
                   D.cov=data$D.cov,cellArea=data$cellArea,n.cells=data$n.cells,
                   xlim=data$xlim,ylim=data$ylim,res=data$res)
@@ -150,9 +153,9 @@ nt2 <- 5 #thinning rate for parameters2
 start.time <- Sys.time()
 Rmodel <- nimbleModel(code=NimModel, constants=constants, data=Nimdata,check=FALSE,inits=Niminits)
 config.nodes <- c('p0','sigma')
-conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,
-                      monitors2=parameters2, thin2=nt2,
-                      useConjugacy = FALSE,nodes=config.nodes)
+conf <- configureMCMC(Rmodel,monitors=parameters,thin=nt,
+                      monitors2=parameters2,thin2=nt2,
+                      nodes=config.nodes)
 
 #add blocked sampler for density parameters. AF_slice mixes better than RW_block, often more ESS/time
 conf$addSampler(target = c("D0","D.beta1"),
@@ -164,6 +167,7 @@ conf$addSampler(target = paste0("y.true[1:",M,",1:",J,",1:",K,"]"),
                 type = 'ySampler',control = list(M=M,J=J,K=K,K2D=data$K2D,y.obs=data$y.obs,n.cap=data$n.cap,
                                                  obs.i=data$obs.i,obs.j=data$obs.j,obs.k=data$obs.k,
                                                  obs.i2D=data$obs.i2D,obs.j2D=data$obs.j2D,n.obs.cells=data$n.obs.cells,
+                                                 n.obs.cells.max=data$n.obs.cells.max,
                                                  y.ups=y.ups),
                 silent = TRUE)
 

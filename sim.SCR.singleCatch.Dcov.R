@@ -95,14 +95,19 @@ sim.SCR.singleCatch.Dcov <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,xlim
     order[l] <- y.order[obs.i[l],obs.j[l],obs.k[l]]
   }
   
-  n.obs.cells <- as.numeric(colSums(table(obs.j,obs.k)))
-  obs.i2D <- obs.j2D <- order2D <- matrix(NA,max(n.obs.cells),K)
+  n.obs.cells <- tabulate(obs.k,nbins=K)
+  n.obs.cells.max <- max(1,max(n.obs.cells)) #padding these to play nice with nimble when 0 captures on an occasions
+  obs.i2D <- matrix(1,n.obs.cells.max,K)
+  obs.j2D <- matrix(1,n.obs.cells.max,K)
+  order2D <- matrix(1,n.obs.cells.max,K)
   for(k in 1:K){
-    obs.i2D[1:n.obs.cells[k],k] <- as.double(obs.i[obs.k==k]) #must be double for custom update
-    obs.j2D[1:n.obs.cells[k],k] <- as.double(obs.j[obs.k==k])
-    order2D[1:n.obs.cells[k],k] <- order[obs.k==k]
+    if(n.obs.cells[k]>0){
+      idx <- which(obs.k==k)
+      obs.i2D[1:n.obs.cells[k],k] <- as.double(obs.i[idx])
+      obs.j2D[1:n.obs.cells[k],k] <- as.double(obs.j[idx])
+      order2D[1:n.obs.cells[k],k] <- order[idx]
+    }
   }
-  n.obs.cells.max <- max(n.obs.cells)
   
   #plot data
   par(mfrow=c(1,1),ask=FALSE)
@@ -126,7 +131,7 @@ sim.SCR.singleCatch.Dcov <- function(D.beta0=NA,D.beta1=NA,D.cov=NA,InSS=NA,xlim
   }
   
   return(list(y.obs=y.obs,obs.i=obs.i,obs.j=obs.j,obs.k=obs.k,obs.i2D=obs.i2D,
-              obs.j2D=obs.j2D,n.obs.cells=n.obs.cells,
+              obs.j2D=obs.j2D,n.obs.cells=n.obs.cells,n.obs.cells.max=n.obs.cells.max,
               y.true=y.true,order=order,order2D=order2D,n.cap=n.cap,X=X,K2D=K2D,
               xlim=xlim,ylim=ylim,x.vals=x.vals,y.vals=y.vals,dSS=dSS,cells=cells,
               n.cells=n.cells,n.cells.x=n.cells.x,n.cells.y=n.cells.y,s.cell=s.cell,

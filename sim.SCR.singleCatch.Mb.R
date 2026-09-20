@@ -88,14 +88,19 @@ sim.SCR.singleCatch.Mb <- function(N=NA,p0.p=NA,p0.c=NA,sigma=NA,X=NA,buff=NA,K=
     order[l] <- y.order[obs.i[l],obs.j[l],obs.k[l]]
   }
   
-  n.obs.cells <- as.numeric(colSums(table(obs.j,obs.k)))
-  obs.i2D <- obs.j2D <- order2D <- matrix(NA,max(n.obs.cells),K)
+  n.obs.cells <- tabulate(obs.k,nbins=K)
+  n.obs.cells.max <- max(1,max(n.obs.cells)) #padding these to play nice with nimble when 0 captures on an occasions
+  obs.i2D <- matrix(1,n.obs.cells.max,K)
+  obs.j2D <- matrix(1,n.obs.cells.max,K)
+  order2D <- matrix(1,n.obs.cells.max,K)
   for(k in 1:K){
-    obs.i2D[1:n.obs.cells[k],k] <- as.double(obs.i[obs.k==k]) #must be double for custom update
-    obs.j2D[1:n.obs.cells[k],k] <- as.double(obs.j[obs.k==k])
-    order2D[1:n.obs.cells[k],k] <- order[obs.k==k]
+    if(n.obs.cells[k]>0){
+      idx <- which(obs.k==k)
+      obs.i2D[1:n.obs.cells[k],k] <- as.double(obs.i[idx])
+      obs.j2D[1:n.obs.cells[k],k] <- as.double(obs.j[idx])
+      order2D[1:n.obs.cells[k],k] <- order[idx]
+    }
   }
-  n.obs.cells.max <- max(n.obs.cells)
   
   #plot data
   par(mfrow=c(1,1),ask=FALSE)
@@ -117,6 +122,6 @@ sim.SCR.singleCatch.Mb <- function(N=NA,p0.p=NA,p0.c=NA,sigma=NA,X=NA,buff=NA,K=
   }
   
   return(list(y.obs=y.obs,y.state=y.state,obs.i=obs.i,obs.j=obs.j,obs.k=obs.k,obs.i2D=obs.i2D,
-              obs.j2D=obs.j2D,n.obs.cells=n.obs.cells,
+              obs.j2D=obs.j2D,n.obs.cells=n.obs.cells,n.obs.cells.max=n.obs.cells.max,
               y.true=y.true,order=order,order2D=order2D,n.cap=n.cap,X=X,xlim=xlim,ylim=ylim,K2D=K2D))
 }

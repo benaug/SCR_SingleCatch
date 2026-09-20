@@ -48,50 +48,66 @@ GetKern <- nimbleFunction(
   }
 )
 
-GetPd <- nimbleFunction(
-  run = function(kern=double(1),p0=double(0),J=double(0), z=double(0)){ 
-    returnType(double(1))
-    if(z==0) return(rep(0,J))
-    if(z==1){
-      pd <- p0*kern
-      return(pd)
-    }
-  }
-)
-
+#collapse repeated Bernoulli likelihood across occasions using K1D.p/K1D.c
 dBernoulliMatrixMb <- nimbleFunction(
-  run = function(x = double(2), pd.p = double(1), pd.c = double(1), y.state = double(2), K2D = double(2), z = double(0),
-                 log = integer(0)) {
+  run = function(x = double(2), kern = double(1), p0.p = double(0), p0.c = double(0),
+                 y.state = double(2), K2D = double(2), K1D.p = double(1), K1D.c = double(1),
+                 z = double(0), log = integer(0)) {
     returnType(double(0))
     if(z==0){#skip calculation if z=0
-      if(sum(x)>0){ #need this so z is not turned off if samples allocated to individual
-        return(-Inf)
-      }else{
-        return(0)
-      }
+      return(0)
     }else{
       J <- nimDim(K2D)[1]
       K <- nimDim(K2D)[2]
-      logProb <- matrix(NA,J,K)
+      logProb <- 0
       for(j in 1:J){
+        ncap.p <- 0
+        ncap.c <- 0
         for(k in 1:K){
-          if(K2D[j,k]>0){
+          if(x[j,k]==1){
+            if(K2D[j,k]==0){
+              return(-Inf)
+            }
             if(y.state[j,k]==0){
-              logProb[j,k] <- dbinom(x[j,k], size = 1, prob = pd.p[j], log = TRUE)
+              ncap.p <- ncap.p+1
             }else{
-              logProb[j,k] <- dbinom(x[j,k], size = 1, prob = pd.c[j], log = TRUE)
+              ncap.c <- ncap.c+1
             }
           }
         }
+        pd.p <- p0.p*kern[j]
+        pd.c <- p0.c*kern[j]
+        if(ncap.p>0){
+          if(pd.p<=0){
+            return(-Inf)
+          }
+          logProb <- logProb+ncap.p*log(pd.p)
+        }
+        nnon.p <- K1D.p[j]-ncap.p
+        if(nnon.p>0){
+          logProb <- logProb+nnon.p*log1p(-pd.p)
+        }
+        if(ncap.c>0){
+          if(pd.c<=0){
+            return(-Inf)
+          }
+          logProb <- logProb+ncap.c*log(pd.c)
+        }
+        nnon.c <- K1D.c[j]-ncap.c
+        if(nnon.c>0){
+          logProb <- logProb+nnon.c*log1p(-pd.c)
+        }
       }
-      return(sum(logProb))
+      return(logProb)
     }
   }
 )
 
 #make dummy random vector generator to make nimble happy
 rBernoulliMatrixMb <- nimbleFunction(
-  run = function(n = integer(0), pd.p = double(1), pd.c = double(1), y.state = double(2), K2D = double(2), z = double(0)) {
+  run = function(n = integer(0), kern = double(1), p0.p = double(0), p0.c = double(0),
+                 y.state = double(2), K2D = double(2), K1D.p = double(1), K1D.c = double(1),
+                 z = double(0)) {
     returnType(double(2))
     J <- nimDim(K2D)[1]
     K <- nimDim(K2D)[2]
@@ -129,6 +145,14 @@ integrand <- nimbleFunction(
 pSmaller <- nimbleFunction(
   run = function(lambda1 = double(0), lambda2 = double(1), log = integer(0)) {
     returnType(double(0))
+    if(lambda1 < 1e-8){
+      lambda1 <- 1e-8
+    }
+    for(i in 1:length(lambda2)){
+      if(lambda2[i] < 1e-8){
+        lambda2[i] <- 1e-8
+      }
+    }
     exp.lambda2 <- exp(-lambda2)
     # pass precomputed exp(-lambda2) to integrand
     param <- c(lambda1,lambda2,exp.lambda2)
@@ -145,97 +169,130 @@ pSmaller <- nimbleFunction(
     }
   })
 
+
 dThin <- nimbleFunction(
-  run = function(x = double(2), y.true = double(2), y.state = double(2), lambda.p = double(2),
-                 lambda.c = double(2), order = double(1), obs.i = double(1), obs.j = double(1), 
-                 n.cap = double(0), log = integer(0)) {
+  run = function(x = double(2), y.true = double(2), y.state = double(2), lambda.p = double(2), lambda.c = double(2), 
+                 order = double(1), obs.i = double(1), obs.j = double(1), n.obs = double(0), n.cap = double(0), log = integer(0)) { 
     returnType(double(0))
     M <- nimDim(y.true)[1]
     J <- nimDim(y.true)[2]
-    
     #track availability
     i.available <- rep(1,M)
     j.available <- rep(1,J)
-    y.is.one <- y.true==1 #which elements of y.true are 1?
-    #identify indices of latent capture events once
-    n.latent <- sum(y.is.one)
-    latent.i <- rep(0, n.latent)
-    latent.j <- rep(0, n.latent)
-    idx.latent <- 1
+    #identify number of latent capture events
+    n.latent <- 0
     for(i in 1:M){
       for(j in 1:J){
-        if(y.is.one[i,j]){
-          latent.i[idx.latent] <- i
-          latent.j[idx.latent] <- j
-          idx.latent <- idx.latent + 1
+        if(y.true[i,j]==1){
+          n.latent <- n.latent+1
         }
       }
     }
+    #if no observed captures, any latent event would necessarily generate at least one real capture
+    if(n.obs==0){ 
+      if(n.latent>0){ 
+        return(-Inf) 
+      }else{ 
+        return(0) 
+      } 
+    } 
+    #with >=1 observed capture, there must be >=1 latent event
+    if(n.latent==0){
+      return(-Inf)
+    }
+    #identify indices of latent capture events once
+    latent.i <- rep(0,n.latent)
+    latent.j <- rep(0,n.latent)
+    idx.latent <- 1
     
+    for(i in 1:M){
+      for(j in 1:J){
+        if(y.true[i,j]==1){
+          latent.i[idx.latent] <- i
+          latent.j[idx.latent] <- j
+          idx.latent <- idx.latent+1
+        }
+      }
+    }
     #construct inverse capture order
-    order.idx <- rep(0, length(order))
-    for(ii in 1:length(order)){
+    order.idx <- rep(0,n.obs) 
+    for(ii in 1:n.obs){ 
       order.idx[order[ii]] <- ii
     }
+    other.lambdas <- rep(0,n.latent)
     logProb <- 0
-    for(o in 1:(length(order)-1)){ #we do not need the final logProb which is always 0
+    
+    for(o in 1:n.obs){ 
       idx <- order.idx[o]
-      #choose first/subsequent-capture lambda from y.state
-      if(y.state[obs.i[idx],obs.j[idx]]==0){
-        focal.lambda <- lambda.p[obs.i[idx],obs.j[idx]]
-      }else{
-        focal.lambda <- lambda.c[obs.i[idx],obs.j[idx]]
+      focal.i <- obs.i[idx]
+      focal.j <- obs.j[idx]
+      #observed capture must correspond to a latent capture
+      if(y.true[focal.i,focal.j]==0){
+        return(-Inf)
       }
-      #count remaining latent capture events using availability vectors
+      #observed individual and trap must still be available
+      if(i.available[focal.i]==0){
+        return(-Inf)
+      }
+      if(j.available[focal.j]==0){
+        return(-Inf)
+      }
+      #choose first/subsequent-capture lambda from observed y.state
+      if(y.state[focal.i,focal.j]==0){
+        focal.lambda <- lambda.p[focal.i,focal.j]
+      }else{
+        focal.lambda <- lambda.c[focal.i,focal.j]
+      }
+      #collect all other currently competing latent events
       n.other.lambdas <- 0
       for(l in 1:n.latent){
         i <- latent.i[l]
         j <- latent.j[l]
         if(i.available[i]==1){
           if(j.available[j]==1){
-            if(!(i==obs.i[idx]&j==obs.j[idx])){
-              n.other.lambdas <- n.other.lambdas + 1
-            }
-          }
-        }
-      }
-      #excluding lambdas of 0 leads to nonfinite logProb;
-      #these inds will never be captured so they cannot get there first
-      if(n.other.lambdas>0){
-        other.lambdas <- rep(0,n.other.lambdas)
-        idx2 <- 1
-        for(l in 1:n.latent){
-          i <- latent.i[l]
-          j <- latent.j[l]
-          if(i.available[i]==1){
-            if(j.available[j]==1){
-              if(!(i==obs.i[idx]&j==obs.j[idx])){
-                if(y.state[i,j]==0){
-                  other.lambdas[idx2] <- lambda.p[i,j]
-                }else{
-                  other.lambdas[idx2] <- lambda.c[i,j]
-                }
-                idx2 <- idx2 + 1
+            if(!(i==focal.i & j==focal.j)){
+              n.other.lambdas <- n.other.lambdas+1
+              if(y.state[i,j]==0){
+                other.lambdas[n.other.lambdas] <- lambda.p[i,j]
+              }else{
+                other.lambdas[n.other.lambdas] <- lambda.c[i,j]
               }
             }
           }
         }
-        logProb <- logProb + pSmaller(focal.lambda,other.lambdas,log=TRUE)
       }
-      i.available[obs.i[idx]] <- 0
-      j.available[obs.j[idx]] <- 0
+      #probability focal event occurs before all competitors
+      if(n.other.lambdas>0){
+        logProb <- logProb + pSmaller(focal.lambda,other.lambdas[1:n.other.lambdas],log=TRUE)
+      }
+      #single-catch: individual and trap are unavailable afterward
+      i.available[focal.i] <- 0
+      j.available[focal.j] <- 0
+    }
+    
+    #after the final observed capture, there cannot be
+    #another latent event with both its individual and trap available
+    for(l in 1:n.latent){
+      i <- latent.i[l]
+      j <- latent.j[l]
+      if(i.available[i]==1){
+        if(j.available[j]==1){
+          return(-Inf)
+        }
+      }
     }
     if(log){
       return(logProb)
     }else{
       return(exp(logProb))
     }
-  })
+  }
+)
 
 rThin <- nimbleFunction(
   run = function(n = integer(0), y.true = double(2), y.state = double(2),
                  lambda.p = double(2),lambda.c = double(2), obs.i = double(1),
-                 obs.j = double(1), order = double(1), n.cap = double(0)){
+                 obs.j = double(1), order = double(1), n.obs = double(0), n.cap = double(0)){
     returnType(double(2))
     J <- nimDim(y.true)[2]
     return(matrix(0,n.cap,J))
@@ -255,6 +312,8 @@ ySampler <- nimbleFunction(
     obs.i2D <- control$obs.i2D
     obs.j2D <- control$obs.j2D
     n.obs.cells <- control$n.obs.cells
+    n.obs.cells.max <- control$n.obs.cells.max
+    n.obs.cells.all <- sum(n.obs.cells)
     K2D <- control$K2D
     y.obs <- control$y.obs
     n.cap <- control$n.cap
@@ -264,202 +323,211 @@ ySampler <- nimbleFunction(
     y.true <- model$y.true
     y.state <- model$y.state
     z <- model$z
-    pd.p <- model$pd.p
-    pd.c <- model$pd.c
+    kern <- model$kern 
+    pd.p <- model$p0.p[1]*kern 
+    pd.c <- model$p0.c[1]*kern 
     lambda.p <- model$lambda.p
     lambda.c <- model$lambda.c
     order2D <- model$order2D
-    ll.y <- array(0,dim=c(M,J,K)) #computing this instead of pulling out of model because it is 1D in model
-    for(i in 1:M){
-      if(z[i]==1){
-        for(j in 1:J){
-          for(k in 1:K){
-            if(K2D[j,k]>0){
-              if(y.state[i,j,k]==0){
-                ll.y[i,j,k] <- dbinom(y.true[i,j,k],1,pd.p[i,j],log=TRUE)
-              }else{
-                ll.y[i,j,k] <- dbinom(y.true[i,j,k],1,pd.c[i,j],log=TRUE)
-              }
-            }
-          }
-        }
-      }
-    }
     
-    ll.y.cand <- ll.y
     ll.y.obs <- model$logProb_y.obs[1,1,]
-    ll.y.obs.cand <- ll.y.obs
-    y.true.cand <- y.true
-    n.obs.cells.all <- sum(n.obs.cells)
+    
     for(up in 1:y.ups){ #update one or more times per iteration
       # update y.true for cells with y.obs=1
       for(c in 1:n.obs.cells.all){
         skip <- FALSE
-        updown <- rbinom(1,1,0.5) #do we propose to turn on or off a y.true for this j-k? symmetric with p=0.5
+        updown <- rbinom(1,1,0.5)
+        this.j <- obs.j[c] 
+        this.k <- obs.k[c] 
+        pd.use <- pd.p[,this.j]*(1-y.state[,this.j,this.k]) +
+          pd.c[,this.j]*y.state[,this.j,this.k] 
+        
         if(updown==1){ #propose to turn on a y.true. y.true must be 0 and z must be 1
-          select.probs.for <- pd.p[,obs.j[c]]*(1-y.true[,obs.j[c],obs.k[c]])*z
-          select.probs.for <- select.probs.for/sum(select.probs.for)
+          select.probs.for <- pd.use*(1-y.true[,this.j,this.k])*z 
+          sum.probs.for <- sum(select.probs.for) 
+          if(sum.probs.for==0){ 
+            skip <- TRUE 
+          }else{
+            select.probs.for <- select.probs.for/sum.probs.for 
+          }
         }else{ #propose to turn off a y.true
-          select.probs.for <- (1-pd.p[,obs.j[c]])*y.true[,obs.j[c],obs.k[c]]*z
+          select.probs.for <- (1-pd.use)*y.true[,this.j,this.k]*z 
           select.probs.for[obs.i[c]] <- 0 # cannot turn off observed guys
           sum.probs.for <- sum(select.probs.for)
-          if(sum.probs.for==0){ #no one can be turned off
+          if(sum.probs.for==0){
             skip <- TRUE
           }else{
             select.probs.for <- select.probs.for/sum.probs.for
           }
         }
-        if(!skip){ #skip if no one to turn off
-          select.cand <- rcat(1,prob=select.probs.for) #this is not a symmetric proposal
-          #swap this y.true state. also symmetric
-          if(updown==1){
-            y.true.cand[select.cand,obs.j[c],obs.k[c]] <- 1
+        
+        if(!skip){
+          select.cand <- rcat(1,prob=select.probs.for)
+          y.curr <- y.true[select.cand,this.j,this.k] 
+          
+          this.pd <- pd.use[select.cand] 
+          if(y.curr==1){
+            ll.y.curr <- log(this.pd) 
+            y.true[select.cand,this.j,this.k] <- 0 
+            ll.y.cand <- log1p(-this.pd) 
           }else{
-            y.true.cand[select.cand,obs.j[c],obs.k[c]] <- 0
+            ll.y.curr <- log1p(-this.pd) 
+            y.true[select.cand,this.j,this.k] <- 1 
+            ll.y.cand <- log(this.pd) 
           }
-          #update observation model likelihood
-          if(y.state[select.cand,obs.j[c],obs.k[c]]==0){
-            ll.y.cand[select.cand,obs.j[c],obs.k[c]] <- dbinom(y.true.cand[select.cand,obs.j[c],obs.k[c]],1,pd.p[select.cand,obs.j[c]],log=TRUE)
-          }else{
-            ll.y.cand[select.cand,obs.j[c],obs.k[c]] <- dbinom(y.true.cand[select.cand,obs.j[c],obs.k[c]],1,pd.c[select.cand,obs.j[c]],log=TRUE)
-          }
+          
           # update thinning likelihood
-          ll.y.obs.cand[obs.k[c]] <- dThin(x=y.obs[1:n.cap,1:J,obs.k[c]],y.true=y.true.cand[1:M,1:J,obs.k[c]],
-                                           y.state=y.state[1:M,1:J,obs.k[c]],
-                                           lambda.p=lambda.p[1:M,1:J],lambda.c=lambda.c[1:M,1:J],
-                                           obs.i=obs.i2D[1:n.obs.cells[obs.k[c]],obs.k[c]],
-                                           obs.j=obs.j2D[1:n.obs.cells[obs.k[c]],obs.k[c]],
-                                           order=order2D[1:n.obs.cells[obs.k[c]],obs.k[c]],
-                                           n.cap=n.cap,log=TRUE)
+          ll.y.obs.cand <- dThin(x=y.obs[1:n.cap,1:J,this.k],y.true=y.true[1:M,1:J,this.k], 
+                                 y.state=y.state[1:M,1:J,this.k],
+                                 lambda.p=lambda.p[1:M,1:J],lambda.c=lambda.c[1:M,1:J],
+                                 obs.i=obs.i2D[1:n.obs.cells.max,this.k],
+                                 obs.j=obs.j2D[1:n.obs.cells.max,this.k],
+                                 order=order2D[1:n.obs.cells.max,this.k],
+                                 n.obs=n.obs.cells[this.k],n.cap=n.cap,log=TRUE) 
+          
           #get backwards proposal probs
           if(updown==1){
-            select.probs.back <- (1-pd.p[,obs.j[c]])*y.true.cand[,obs.j[c],obs.k[c]]*z
-            select.probs.back[obs.i[c]] <- 0 # cannot turn off observed guys
+            select.probs.back <- (1-pd.use)*y.true[,this.j,this.k]*z 
+            select.probs.back[obs.i[c]] <- 0
             select.probs.back <- select.probs.back/sum(select.probs.back)
           }else{
-            select.probs.back <- pd.p[,obs.j[c]]*(1-y.true.cand[,obs.j[c],obs.k[c]])*z
+            select.probs.back <- pd.use*(1-y.true[,this.j,this.k])*z 
             select.probs.back <- select.probs.back/sum(select.probs.back)
           }
-
-          logProb.curr <- ll.y.obs[obs.k[c]] +  ll.y[select.cand,obs.j[c],obs.k[c]]
-          logProb.cand <- ll.y.obs.cand[obs.k[c]] +  ll.y.cand[select.cand,obs.j[c],obs.k[c]]
-          log_MH_ratio <-  (logProb.cand + log(select.probs.back[select.cand])) - (logProb.curr + log(select.probs.for[select.cand]))
+          
+          logProb.curr <- ll.y.obs[this.k]+ll.y.curr 
+          logProb.cand <- ll.y.obs.cand+ll.y.cand 
+          log_MH_ratio <- (logProb.cand+log(select.probs.back[select.cand])) -
+            (logProb.curr+log(select.probs.for[select.cand]))
+          
           accept <- decide(log_MH_ratio)
           if(accept){
-            y.true[select.cand,obs.j[c],obs.k[c]] <- y.true.cand[select.cand,obs.j[c],obs.k[c]]
-            ll.y[select.cand,obs.j[c],obs.k[c]]  <- ll.y.cand[select.cand,obs.j[c],obs.k[c]]
-            ll.y.obs[obs.k[c]] <- ll.y.obs.cand[obs.k[c]]
+            ll.y.obs[this.k] <- ll.y.obs.cand 
           }else{
-            y.true.cand[select.cand,obs.j[c],obs.k[c]] <- y.true[select.cand,obs.j[c],obs.k[c]]
-            ll.y.cand[select.cand,obs.j[c],obs.k[c]]  <- ll.y[select.cand,obs.j[c],obs.k[c]]
-            ll.y.obs.cand[obs.k[c]] <- ll.y.obs[obs.k[c]]
-          }
-        }
-      }
-
-      #update y.true cells with y.obs=0
-      for(k in 1:K){ #loop over occasions
-        for(i in 1:n.obs.cells[k]){ #loop over captured individuals
-          this.i <- obs.i2D[i,k]
-          this.j <- obs.j2D[i,k]
-          skip <- FALSE
-          updown <- rbinom(1,1,0.5) #do we propose to turn on or off a y.true for this j-k? symmetric with p=0.5
-          if(updown==1){ #propose to turn on a y.true. y.true must be 0
-            select.probs.for <- pd.p[this.i,]*(1-y.true[this.i,,k])
-            select.probs.for <- select.probs.for/sum(select.probs.for)
-          }else{ #propose to turn off a y.true
-            select.probs.for <- (1-pd.p[this.i,])*y.true[this.i,,k]
-            select.probs.for[this.j] <- 0 # cannot turn off trap where this guy was observed
-            sum.probs.for <- sum(select.probs.for)
-            if(sum.probs.for==0){ #no one can be turned off
-              skip <- TRUE
-            }else{
-              select.probs.for <- select.probs.for/sum.probs.for
-            }
-          }
-          if(!skip){ #skip if no one to turn off
-            select.cand <- rcat(1,prob=select.probs.for) #this is not a symmetric proposal
-            #swap this y.true state. also symmetric
-            if(updown==1){
-              y.true.cand[this.i,select.cand,k] <- 1
-            }else{
-              y.true.cand[this.i,select.cand,k] <- 0
-            }
-            #update observation model likelihood
-            if(y.state[this.i,select.cand,k]==0){
-              ll.y.cand[this.i,select.cand,k] <- dbinom(y.true.cand[this.i,select.cand,k],1,pd.p[this.i,select.cand],log=TRUE)
-            }else{
-              ll.y.cand[this.i,select.cand,k] <- dbinom(y.true.cand[this.i,select.cand,k],1,pd.c[this.i,select.cand],log=TRUE)
-            }
-            #update thinning likelihood
-            ll.y.obs.cand[k] <- dThin(x=y.obs[1:n.cap,1:J,k],y.true=y.true.cand[1:M,1:J,k],y.state=y.state[1:M,1:J,k],
-                                       lambda.p=lambda.p[1:M,1:J],lambda.c=lambda.c[1:M,1:J],
-                                       obs.i=obs.i2D[1:n.obs.cells[k],k],
-                                       obs.j=obs.j2D[1:n.obs.cells[k],k],
-                                       order=order2D[1:n.obs.cells[k],k],
-                                       n.cap=n.cap,log=TRUE)
-            #get backwards proposal probs
-            if(updown==1){
-              select.probs.back <- (1-pd.p[this.i,])*y.true.cand[this.i,,k]
-              select.probs.back[this.j] <- 0 # cannot turn off trap where this guy was observed
-              select.probs.back <- select.probs.back/sum(select.probs.back)
-            }else{
-              select.probs.back <- pd.p[this.i,]*(1-y.true.cand[this.i,,k])
-              select.probs.back <- select.probs.back/sum(select.probs.back)
-            }
-            logProb.curr <- ll.y.obs[k] + ll.y[this.i,select.cand,k]
-            logProb.cand <- ll.y.obs.cand[k] + ll.y.cand[this.i,select.cand,k]
-            log_MH_ratio <-  (logProb.cand + log(select.probs.back[select.cand])) - (logProb.curr + log(select.probs.for[select.cand]))
-            accept <- decide(log_MH_ratio)
-            if(accept){
-              y.true[this.i,select.cand,k] <- y.true.cand[this.i,select.cand,k]
-              ll.y[this.i,select.cand,k]  <- ll.y.cand[this.i,select.cand,k]
-              ll.y.obs[k] <- ll.y.obs.cand[k]
-            }else{
-              y.true.cand[this.i,select.cand,k] <- y.true[this.i,select.cand,k]
-              ll.y.cand[this.i,select.cand,k]  <- ll.y[this.i,select.cand,k]
-              ll.y.obs.cand[k] <- ll.y.obs[k]
-            }
+            y.true[select.cand,this.j,this.k] <- y.curr #restore only changed cell
           }
         }
       }
       
-      #now update order
-      order2D.cand <- order2D
+      #update y.true cells with y.obs=0
       for(k in 1:K){
-        #symmetric proposal
-        select.probs <- rep(1/n.obs.cells[k],n.obs.cells[k])
-        swap1 <- rcat(1,prob=select.probs)
-        swap2 <- rcat(1,prob=select.probs)
-        if(swap1!=swap2){
-          order2D.cand[swap1,k] <- order2D[swap2,k]
-          order2D.cand[swap2,k] <- order2D[swap1,k]
-          ll.y.obs.cand[k] <- dThin(x=y.obs[1:n.cap,1:J,k],y.true=y.true[1:M,1:J,k],y.state=y.state[1:M,1:J,k],
-                                    lambda.p=lambda.p[1:M,1:J],lambda.c=lambda.c[1:M,1:J],
-                                    obs.i=obs.i2D[1:n.obs.cells[k],k],
-                                    obs.j=obs.j2D[1:n.obs.cells[k],k],
-                                    order=order2D.cand[1:n.obs.cells[k],k],
-                                    n.cap=n.cap,log=TRUE)
-          log_MH_ratio <-  ll.y.obs.cand[k] - ll.y.obs[k]
-          accept <- decide(log_MH_ratio)
-          
-          if(accept){
-            order2D[swap1,k] <- order2D.cand[swap1,k]
-            order2D[swap2,k] <- order2D.cand[swap2,k]
-            ll.y.obs[k] <- ll.y.obs.cand[k]
-          }else{
-            order2D.cand[swap1,k] <- order2D[swap1,k]
-            order2D.cand[swap2,k] <- order2D[swap2,k]
-            ll.y.obs.cand[k] <- ll.y.obs[k]
+        if(n.obs.cells[k]>0){ 
+          for(i in 1:n.obs.cells[k]){ 
+            this.i <- obs.i2D[i,k]
+            this.j <- obs.j2D[i,k]
+            skip <- FALSE
+            updown <- rbinom(1,1,0.5)
+            
+            #proposal probabilities use the observed behavioral state for each trap
+            pd.use <- pd.p[this.i,]*(1-y.state[this.i,,k]) +
+              pd.c[this.i,]*y.state[this.i,,k] 
+            
+            if(updown==1){ #propose to turn on a y.true. y.true must be 0
+              select.probs.for <- pd.use*(1-y.true[this.i,,k])*K2D[,k] #state-specific and exclude closed traps
+              sum.probs.for <- sum(select.probs.for) 
+              if(sum.probs.for==0){ 
+                skip <- TRUE 
+              }else{
+                select.probs.for <- select.probs.for/sum.probs.for 
+              }
+            }else{ #propose to turn off a y.true
+              select.probs.for <- (1-pd.use)*y.true[this.i,,k] 
+              select.probs.for[this.j] <- 0 # cannot turn off trap where this guy was observed
+              sum.probs.for <- sum(select.probs.for)
+              if(sum.probs.for==0){
+                skip <- TRUE
+              }else{
+                select.probs.for <- select.probs.for/sum.probs.for
+              }
+            }
+            
+            if(!skip){
+              select.cand <- rcat(1,prob=select.probs.for)
+              y.curr <- y.true[this.i,select.cand,k] 
+              
+              this.pd <- pd.use[select.cand] 
+              if(y.curr==1){
+                ll.y.curr <- log(this.pd) 
+                y.true[this.i,select.cand,k] <- 0 
+                ll.y.cand <- log1p(-this.pd) 
+              }else{
+                ll.y.curr <- log1p(-this.pd) 
+                y.true[this.i,select.cand,k] <- 1 
+                ll.y.cand <- log(this.pd) 
+              }
+              
+              #update thinning likelihood
+              ll.y.obs.cand <- dThin(x=y.obs[1:n.cap,1:J,k],y.true=y.true[1:M,1:J,k], 
+                                     y.state=y.state[1:M,1:J,k],
+                                     lambda.p=lambda.p[1:M,1:J],lambda.c=lambda.c[1:M,1:J],
+                                     obs.i=obs.i2D[1:n.obs.cells.max,k],
+                                     obs.j=obs.j2D[1:n.obs.cells.max,k],
+                                     order=order2D[1:n.obs.cells.max,k],
+                                     n.obs=n.obs.cells[k],n.cap=n.cap,log=TRUE) 
+              
+              #get backwards proposal probs
+              if(updown==1){
+                select.probs.back <- (1-pd.use)*y.true[this.i,,k] 
+                select.probs.back[this.j] <- 0
+                select.probs.back <- select.probs.back/sum(select.probs.back)
+              }else{
+                select.probs.back <- pd.use*(1-y.true[this.i,,k])*K2D[,k] 
+                select.probs.back <- select.probs.back/sum(select.probs.back)
+              }
+              
+              logProb.curr <- ll.y.obs[k]+ll.y.curr 
+              logProb.cand <- ll.y.obs.cand+ll.y.cand 
+              log_MH_ratio <- (logProb.cand+log(select.probs.back[select.cand])) -
+                (logProb.curr+log(select.probs.for[select.cand]))
+              
+              accept <- decide(log_MH_ratio)
+              if(accept){
+                ll.y.obs[k] <- ll.y.obs.cand 
+              }else{
+                y.true[this.i,select.cand,k] <- y.curr #restore only changed cell
+              }
+            }
           }
-        }
+        } 
+      }
+      
+      #now update order
+      for(k in 1:K){
+        if(n.obs.cells[k]>1){ 
+          #symmetric proposal
+          select.probs <- rep(1/n.obs.cells[k],n.obs.cells[k])
+          swap1 <- rcat(1,prob=select.probs) 
+          swap2 <- rcat(1,prob=select.probs) 
+          if(swap1!=swap2){
+            old1 <- order2D[swap1,k] 
+            old2 <- order2D[swap2,k] 
+            order2D[swap1,k] <- old2 
+            order2D[swap2,k] <- old1 
+            
+            ll.y.obs.cand <- dThin(x=y.obs[1:n.cap,1:J,k],y.true=y.true[1:M,1:J,k], 
+                                   y.state=y.state[1:M,1:J,k],
+                                   lambda.p=lambda.p[1:M,1:J],lambda.c=lambda.c[1:M,1:J],
+                                   obs.i=obs.i2D[1:n.obs.cells.max,k],
+                                   obs.j=obs.j2D[1:n.obs.cells.max,k],
+                                   order=order2D[1:n.obs.cells.max,k],
+                                   n.obs=n.obs.cells[k],n.cap=n.cap,log=TRUE) 
+            log_MH_ratio <- ll.y.obs.cand-ll.y.obs[k]
+            accept <- decide(log_MH_ratio)
+            
+            if(accept){
+              ll.y.obs[k] <- ll.y.obs.cand
+            }else{
+              order2D[swap1,k] <- old1 #restore only swapped elements
+              order2D[swap2,k] <- old2 
+            }
+          }
+        } 
       }
     }
     
-    #put everything back into the model$stuff 
     model$y.true <<- y.true
     model$order2D <<- order2D
-    model$calculate(calcNodes) #update dependencies, likelihoods
+    model$calculate(calcNodes)
     copy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
   },
   methods = list( reset = function () {} )
@@ -475,111 +543,132 @@ zSampler <- nimbleFunction(
     N.node <- model$expandNodeNames("N")
     z.nodes <- model$expandNodeNames("z")
     kern.nodes <- model$expandNodeNames(paste("kern"))
-    pd.p.nodes <- model$expandNodeNames(paste("pd.p"))
-    pd.c.nodes <- model$expandNodeNames(paste("pd.c"))
-    lambda.nodes <- model$expandNodeNames(c("lambda.p","lambda.c"))
-    calcNodes <- c(N.node,z.nodes,kern.nodes,pd.p.nodes,pd.c.nodes,lambda.nodes,y.nodes)
+    lambda.p.nodes <- model$expandNodeNames(paste("lambda.p")) 
+    lambda.c.nodes <- model$expandNodeNames(paste("lambda.c")) 
+    calcNodes <- c(N.node,z.nodes,kern.nodes,lambda.p.nodes,lambda.c.nodes,y.nodes) 
   },
   run = function(){
-    for(up in 1:z.ups){ #how many updates per iteration?
-      #propose to add/subtract 1
-      updown <- rbinom(1,1,0.5) #p=0.5 is symmetric. If you change this, must account for asymmetric proposal
-      reject <- FALSE #we auto reject if you select a captured individual
-      if(updown==0){#subtract
-        #find all z's currently on
-        z.on <- which(model$z==1)
-        n.z.on <- length(z.on)
-        pick <- rcat(1,rep(1/n.z.on,n.z.on)) #select one of these individuals
-        pick <- z.on[pick]
-        if(sum(model$y.true[pick,,])>0){ #is this individual captured?
-          reject <- TRUE #if so, we reject (could never select these inds, but then need to account for asymmetric proposal)
+    #build eligible on/off lists once and update them after accepted moves
+    z.on <- rep(0,M)
+    z.off <- rep(0,M)
+    non.curr <- 0
+    noff.curr <- 0
+    for(i in 1:M){
+      if(model$z[i]==1){
+        if(sum(model$y.true[i,,])==0){ #active individuals with latent captures cannot be turned off
+          non.curr <- non.curr+1
+          z.on[non.curr] <- i
         }
-        if(!reject){
+      }else{
+        #if z=0, y.true must be all zero, so no need to scan y.true
+        noff.curr <- noff.curr+1
+        z.off[noff.curr] <- i
+      }
+    }
+    
+    for(up in 1:z.ups){
+      updown <- rbinom(1,1,0.5)
+      if(updown==0){#subtract
+        non.init <- non.curr 
+        if(non.init>0){ 
+          pick.pos <- rcat(1,rep(1/non.init,non.init)) 
+          pick <- z.on[pick.pos] 
+          N.init <- model$N[1] 
+          
           #get initial logprobs for N and y
           lp.initial.N <- model$getLogProb(N.node)
           lp.initial.y <- model$getLogProb(y.nodes[pick])
           
           #propose new N/z
-          model$N[1] <<-  model$N[1] - 1
+          model$N[1] <<- model$N[1]-1
           model$z[pick] <<- 0
           
-          #turn kern/pds off
-          model$calculate(kern.nodes[pick])
-          model$calculate(pd.p.nodes[pick])
-          model$calculate(pd.c.nodes[pick])
-
           #get proposed logprobs for N and y
           lp.proposed.N <- model$calculate(N.node)
-          lp.proposed.y <- model$calculate(y.nodes[pick]) #will always be 0
+          lp.proposed.y <- 0 
           
           #MH step
-          log_MH_ratio <- (lp.proposed.N + lp.proposed.y) - (lp.initial.N + lp.initial.y)
+          log_MH_ratio <- (lp.proposed.N+lp.proposed.y)-
+            (lp.initial.N+lp.initial.y)+log(non.init/N.init) 
           accept <- decide(log_MH_ratio)
+          
           if(accept) {
+            model$calculate(kern.nodes[pick]) #synchronize after acceptance
+            model$calculate(lambda.p.nodes[pick]) 
+            model$calculate(lambda.c.nodes[pick]) 
+            model$calculate(y.nodes[pick]) 
             mvSaved["N",1][1] <<- model[["N"]]
-            mvSaved["kern",1][pick,] <<- model[["kern"]][pick,]
-            mvSaved["pd.p",1][pick,] <<- model[["pd.p"]][pick,]
-            mvSaved["pd.c",1][pick,] <<- model[["pd.c"]][pick,]
+            mvSaved["kern",1][pick,] <<- model[["kern"]][pick,] 
+            mvSaved["lambda.p",1][pick,] <<- model[["lambda.p"]][pick,] 
+            mvSaved["lambda.c",1][pick,] <<- model[["lambda.c"]][pick,] 
             mvSaved["z",1][pick] <<- model[["z"]][pick]
+            
+            #move accepted individual from on list to off list
+            z.on[pick.pos] <- z.on[non.curr]
+            z.on[non.curr] <- 0
+            non.curr <- non.curr-1
+            noff.curr <- noff.curr+1
+            z.off[noff.curr] <- pick
           }else{
             model[["N"]] <<- mvSaved["N",1][1]
-            model[["kern"]][pick,] <<- mvSaved["kern",1][pick,]
-            model[["pd.p"]][pick,] <<- mvSaved["pd.p",1][pick,]
-            model[["pd.c"]][pick,] <<- mvSaved["pd.c",1][pick,]
             model[["z"]][pick] <<- mvSaved["z",1][pick]
-            model$calculate(y.nodes[pick])
             model$calculate(N.node)
           }
         }
+        
       }else{#add
-        if(model$N[1] < M){ #cannot update if z maxed out. Need to raise M
-          z.off <- which(model$z==0)
-          n.z.off <- length(z.off)
-          pick <- rcat(1,rep(1/n.z.off,n.z.off)) #select one of these individuals
-          pick <- z.off[pick]
+        noff.init <- noff.curr 
+        if(noff.init>0){ 
+          pick.pos <- rcat(1,rep(1/noff.init,noff.init)) 
+          pick <- z.off[pick.pos] 
+          N.init <- model$N[1] 
           
           #get initial logprobs for N and y
           lp.initial.N <- model$getLogProb(N.node)
-          lp.initial.y <- model$getLogProb(y.nodes[pick]) #will always be 0
+          lp.initial.y <- 0 
           
           #propose new N/z
-          model$N[1] <<-  model$N[1] + 1
+          model$N[1] <<- model$N[1]+1
           model$z[pick] <<- 1
           
-          #turn kern/pds on
           model$calculate(kern.nodes[pick])
-          model$calculate(pd.p.nodes[pick])
-          model$calculate(pd.c.nodes[pick])
           
           #get proposed logprobs for N and y
           lp.proposed.N <- model$calculate(N.node)
           lp.proposed.y <- model$calculate(y.nodes[pick])
           
           #MH step
-          log_MH_ratio <- (lp.proposed.N + lp.proposed.y) - (lp.initial.N + lp.initial.y)
+          log_MH_ratio <- (lp.proposed.N+lp.proposed.y)-
+            (lp.initial.N+lp.initial.y)+log((N.init+1)/(non.curr+1)) 
           accept <- decide(log_MH_ratio)
+          
           if(accept) {
+            model$calculate(lambda.p.nodes[pick]) #synchronize after acceptance
+            model$calculate(lambda.c.nodes[pick]) 
             mvSaved["N",1][1] <<- model[["N"]]
-            mvSaved["kern",1][pick,] <<- model[["kern"]][pick,]
-            mvSaved["pd.p",1][pick,] <<- model[["pd.p"]][pick,]
-            mvSaved["pd.c",1][pick,] <<- model[["pd.c"]][pick,]
+            mvSaved["kern",1][pick,] <<- model[["kern"]][pick,] 
+            mvSaved["lambda.p",1][pick,] <<- model[["lambda.p"]][pick,] 
+            mvSaved["lambda.c",1][pick,] <<- model[["lambda.c"]][pick,] 
             mvSaved["z",1][pick] <<- model[["z"]][pick]
+            
+            #move accepted individual from off list to on list
+            z.off[pick.pos] <- z.off[noff.curr]
+            z.off[noff.curr] <- 0
+            noff.curr <- noff.curr-1
+            non.curr <- non.curr+1
+            z.on[non.curr] <- pick
           }else{
             model[["N"]] <<- mvSaved["N",1][1]
-            model[["kern"]][pick,] <<- mvSaved["kern",1][pick,]
-            model[["pd.p"]][pick,] <<- mvSaved["pd.p",1][pick,]
-            model[["pd.c"]][pick,] <<- mvSaved["pd.c",1][pick,]
+            model[["kern"]][pick,] <<- mvSaved["kern",1][pick,] 
             model[["z"]][pick] <<- mvSaved["z",1][pick]
-            model$calculate(y.nodes[pick])
+            model$calculate(y.nodes[pick]) #restore y logProb
             model$calculate(N.node)
           }
         }
       }
     }
-    model$calculate(lambda.nodes) #not used in this update, but needs to be updated after we are done
-    #copy back to mySaved to update logProbs which was not done above
+    
     copy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
-    # copy(from = model, to = mvSaved, row = 1, nodes = z.nodes, logProb = TRUE)
   },
   methods = list( reset = function () {} )
 )

@@ -126,9 +126,11 @@ for(i in 1:M){
   }
 }
 #initialize capture order
-order2D.init <- matrix(NA,max(data$n.obs.cells),K)
+order2D.init <- matrix(1,data$n.obs.cells.max,K) #pad this to play nice with nimble when 0 captures on an occasion
 for(k in 1:K){
-  order2D.init[1:data$n.obs.cells[k],k] <- sample(1:data$n.obs.cells[k],data$n.obs.cells[k],replace=FALSE)
+  if(data$n.obs.cells[k]>0){
+    order2D.init[1:data$n.obs.cells[k],k] <-sample(1:data$n.obs.cells[k],data$n.obs.cells[k],replace=FALSE)
+  }
 }
 
 #initial values for nimble
@@ -137,7 +139,14 @@ Niminits <- list(N=N.init,lambda.N=N.init,D0=sum(z.init)/(sum(data$InSS)*data$re
                  s=s.init,y.true=y.true.init,z=z.init,order2D=order2D.init)
 
 #constants for nimble
-constants <- list(M=M,J=J,K=K,K2D=data$K2D,xlim=data$xlim,ylim=data$ylim,n.cap=data$n.cap,
+K1D.p <- matrix(0,M,J) 
+K1D.c <- matrix(0,M,J) 
+for(i in 1:M){ 
+  K1D.p[i,] <- rowSums(data$K2D*(1-y.state[i,,])) 
+  K1D.c[i,] <- rowSums(data$K2D*y.state[i,,]) 
+} 
+constants <- list(M=M,J=J,K=K,K2D=data$K2D,K1D.p=K1D.p,K1D.c=K1D.c,
+                  n.cap=data$n.cap,n.obs.cells.max=data$n.obs.cells.max,
                   obs.i2D=data$obs.i2D,obs.j2D=data$obs.j2D,n.obs.cells=data$n.obs.cells,
                   D.cov=data$D.cov,cellArea=data$cellArea,n.cells=data$n.cells,
                   xlim=data$xlim,ylim=data$ylim,res=data$res)
@@ -155,7 +164,9 @@ start.time <- Sys.time()
 Rmodel <- nimbleModel(code=NimModel, constants=constants, data=Nimdata,check=FALSE,inits=Niminits)
 config.nodes <- c('p0.p','p0.c','sigma')
 # config.nodes <- c()
-conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,useConjugacy = FALSE,nodes=config.nodes)
+conf <- configureMCMC(Rmodel,monitors=parameters,thin=nt,
+                      monitors2=parameters2,thin2=nt2,
+                      nodes=config.nodes)
 
 #add sampler for y.true
 y.ups <- 2 #no idea what is optimal. 1 might be fine choice.
@@ -163,6 +174,7 @@ conf$addSampler(target = paste0("y.true[1:",M,",1:",J,",1:",K,"]"),
                 type = 'ySampler',control = list(M=M,J=J,K=K,K2D=data$K2D,y.obs=data$y.obs,n.cap=data$n.cap,
                                                  obs.i=data$obs.i,obs.j=data$obs.j,obs.k=data$obs.k,
                                                  obs.i2D=data$obs.i2D,obs.j2D=data$obs.j2D,n.obs.cells=data$n.obs.cells,
+                                                 n.obs.cells.max=data$n.obs.cells.max,
                                                  y.ups=y.ups),
                 silent = TRUE)
 

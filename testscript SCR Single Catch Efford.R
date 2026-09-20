@@ -42,9 +42,11 @@ for(i in idx){
   }
 }
 #initialize capture order
-order2D.init <- matrix(NA,max(data$n.obs.cells),K)
+order2D.init <- matrix(1,data$n.obs.cells.max,K) #pad this to play nice with nimble when 0 captures on an occasion
 for(k in 1:K){
-  order2D.init[1:data$n.obs.cells[k],k] <- sample(1:data$n.obs.cells[k],data$n.obs.cells[k],replace=FALSE)
+  if(data$n.obs.cells[k]>0){
+    order2D.init[1:data$n.obs.cells[k],k] <-sample(1:data$n.obs.cells[k],data$n.obs.cells[k],replace=FALSE)
+  }
 }
 
 #initial values for nimble
@@ -53,7 +55,9 @@ Niminits <- list(lambda.N=N.init,p0=runif(1,0.1,0.9),sigma=runif(1,0.5,1),
                  order2D=order2D.init)
 
 #constants for nimble
-constants <- list(M=M,J=J,K=K,K2D=data$K2D,xlim=data$xlim,ylim=data$ylim,n.cap=data$n.cap,
+K1D <- rowSums(data$K2D) #number of operating occasions at each trap
+constants <- list(M=M,J=J,K=K,K2D=data$K2D,K1D=K1D,xlim=data$xlim,ylim=data$ylim,
+                  n.cap=data$n.cap,n.obs.cells.max=data$n.obs.cells.max,
                   obs.i2D=data$obs.i2D,obs.j2D=data$obs.j2D,n.obs.cells=data$n.obs.cells)
 
 #supply data to nimble
@@ -66,7 +70,7 @@ start.time <- Sys.time()
 Rmodel <- nimbleModel(code=NimModel, constants=constants, data=Nimdata,check=FALSE,inits=Niminits)
 config.nodes <- c('p0','sigma','lambda.N')
 # config.nodes <- c()
-conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,useConjugacy = FALSE,nodes=config.nodes)
+conf <- configureMCMC(Rmodel,monitors=parameters,thin=nt,nodes=config.nodes)
 
 #add sampler for y.true
 y.ups <- 2 #no idea what is optimal. 1 might be fine choice.
@@ -74,6 +78,7 @@ conf$addSampler(target = paste0("y.true[1:",M,",1:",J,",1:",K,"]"),
                 type = 'ySampler',control = list(M=M,J=J,K=K,K2D=data$K2D,y.obs=data$y.obs,n.cap=data$n.cap,
                                                  obs.i=data$obs.i,obs.j=data$obs.j,obs.k=data$obs.k,
                                                  obs.i2D=data$obs.i2D,obs.j2D=data$obs.j2D,n.obs.cells=data$n.obs.cells,
+                                                 n.obs.cells.max=data$n.obs.cells.max,
                                                  y.ups=y.ups),
                 silent = TRUE)
 

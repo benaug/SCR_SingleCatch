@@ -158,9 +158,9 @@ nt2 <- 5 #thinning rate for parameters2
 start.time <- Sys.time()
 Rmodel <- nimbleModel(code=NimModel, constants=constants, data=Nimdata,check=FALSE,inits=Niminits)
 config.nodes <- c('p0','sigma')
-conf <- configureMCMC(Rmodel,monitors=parameters, thin=nt,
-                      monitors2=parameters2, thin2=nt2,
-                      useConjugacy = FALSE,nodes=config.nodes)
+conf <- configureMCMC(Rmodel,monitors=parameters,thin=nt,
+                      monitors2=parameters2,thin2=nt2,
+                      nodes=config.nodes)
 
 #add sampler for N/z
 z.ups <- round(M*0.25) # how many z proposals per iteration? 25% of M generally seems good, but no idea what is optimal

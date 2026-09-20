@@ -117,10 +117,10 @@ zSampler <- nimbleFunction(
     for(up in 1:z.ups){ #how many updates per iteration?
       #propose to add/subtract 1
       updown <- rbinom(1,1,0.5) #p=0.5 is symmetric. If you change this, must account for asymmetric proposal
-      if(updown==0){#subtract
+      if(updown==0){ #subtract
         non.init <- non.curr
-        if(non.init>0){ 
-          pick.pos <- rcat(1,rep(1/non.init,non.init)) 
+        if(non.init>0){
+          pick.pos <- rcat(1,rep(1/non.init,non.init))
           pick <- z.on[pick.pos]
           N.init <- model$N[1] #needed for proposal/combinatorial correction
           
@@ -132,11 +132,11 @@ zSampler <- nimbleFunction(
           model$N[1] <<- model$N[1] - 1
           model$z[pick] <<- 0
           
-          model$calculate(kern.nodes[pick]) #turn kern off
+          # model$calculate(kern.nodes[pick]) #do not calculate until accepted
           
           #get proposed logprobs for N and y
           lp.proposed.N <- model$calculate(N.node)
-          lp.proposed.y <- 0 
+          lp.proposed.y <- 0
           
           #MH step
           log_MH_ratio <- (lp.proposed.N + lp.proposed.y) -
@@ -144,11 +144,13 @@ zSampler <- nimbleFunction(
           accept <- decide(log_MH_ratio)
           
           if(accept) {
-            #calculate y now to synchronize accepted logProb
+            #calculate kern and y now to synchronize after accepted
+            model$calculate(kern.nodes[pick])
             model$calculate(y.nodes[pick])
             mvSaved["N",1][1] <<- model[["N"]]
             mvSaved["kern",1][pick,] <<- model[["kern"]][pick,]
             mvSaved["z",1][pick] <<- model[["z"]][pick]
+            
             #move accepted individual from on list to off list
             z.on[pick.pos] <- z.on[non.curr]
             z.on[non.curr] <- 0
@@ -157,12 +159,11 @@ zSampler <- nimbleFunction(
             z.off[noff.curr] <- pick
           }else{
             model[["N"]] <<- mvSaved["N",1][1]
-            model[["kern"]][pick,] <<- mvSaved["kern",1][pick,]
+            # model[["kern"]][pick,] <<- mvSaved["kern",1][pick,] #was not changed
             model[["z"]][pick] <<- mvSaved["z",1][pick]
             model$calculate(N.node)
           }
         }
-        
       }else{#add
         noff.init <- noff.curr
         if(noff.init>0){
